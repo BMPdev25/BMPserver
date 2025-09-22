@@ -132,7 +132,7 @@ app.use((err, req, res, next) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 const HOST = '0.0.0.0'; // Listen on all network interfaces for emulator access
-server.listen(PORT, HOST, () => {
-  console.log(`Server running on ${HOST}:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on localhost:${PORT}`);
   console.log('Socket.IO enabled for real-time features');
 });

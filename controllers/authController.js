@@ -65,7 +65,7 @@ exports.login = async (req, res) => {
     const user = await User.findOne({ phone });
 
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'No user found' });
     }
 
     // Verify password
@@ -93,6 +93,7 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+    console.log(error)
     res.status(500).json({ message: 'Server error during login' });
   }
 };
