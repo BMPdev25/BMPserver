@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 // Register a new user
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, userType } = req.body;
+    const { name, email, phone, password, userType, } = req.body;
     console.log('Register request body:', req.body);
     // Check if user exists
     const existingUser = await User.findOne({
@@ -34,6 +34,44 @@ exports.register = async (req, res) => {
 
     await user.save();
 
+    // Store priest or devotee profile
+    if (userType === 'priest') {
+      const PriestProfile = require('../models/priestProfile');
+      await PriestProfile.create({
+        userId: user._id,
+        experience: req.body.experience || 0,
+        religiousTradition: req.body.religiousTradition || '',
+        templesAffiliated: req.body.templesAffiliated || [],
+        ceremonies: req.body.ceremonies || [],
+        description: req.body.description || '',
+        governmentIdVerified: req.body.governmentIdVerified || false,
+        religiousCertificationVerified: req.body.religiousCertificationVerified || false,
+        profilePicture: req.body.profilePicture || '',
+        ratings: req.body.ratings || { average: 0, count: 0 },
+        availability: req.body.availability || {},
+        priceList: req.body.priceList || {},
+        ceremonyCount: req.body.ceremonyCount || 0,
+        isVerified: req.body.isVerified !== undefined ? req.body.isVerified : true,
+        currentAvailability: req.body.currentAvailability || { status: 'offline', lastUpdated: new Date(), autoToggle: true },
+        schedule: req.body.schedule || { workingHours: {}, blockedDates: [], recurringUnavailability: [] },
+        earnings: req.body.earnings || { totalEarnings: 0, thisMonth: 0, lastMonth: 0, pendingPayments: 0, monthlyEarnings: [] },
+        analytics: req.body.analytics || { completionRate: 100, responseTime: 2, repeatCustomers: 0, monthlyTrends: [] },
+        serviceAreas: req.body.serviceAreas || [],
+        specializations: req.body.specializations || []
+      });
+    } else if (userType === 'devotee') {
+      const DevoteeProfile = require('../models/devoteeProfile');
+      await DevoteeProfile.create({
+        userId: user._id,
+        address: req.body.address || {},
+        preferences: req.body.preferences || {},
+        history: req.body.history || [],
+        isVerified: req.body.isVerified !== undefined ? req.body.isVerified : true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
     // Generate JWT
     const token = jwt.sign(
       { id: user._id, userType: user.userType },
@@ -47,7 +85,6 @@ exports.register = async (req, res) => {
       email: user.email,
       phone: user.phone,
       userType: user.userType,
-      profileCompleted: user.profileCompleted,
       token,
     });
   } catch (error) {

@@ -53,6 +53,7 @@ exports.priestOnly = (req, res, next) => {
 
 // Middleware to restrict access to devotee only
 exports.devoteeOnly = (req, res, next) => {
+  console.log(req.user)
   if (req.user && req.user.userType === 'devotee') {
     next();
   } else {

@@ -29,123 +29,6 @@ const userSchema = new mongoose.Schema({
     enum: ['priest', 'devotee'],
     required: true,
   },
-  profileCompleted: {
-    type: Boolean,
-    default: false,
-  },
-  // Profile Picture with cloud storage support
-  profilePicture: {
-    url: {
-      type: String,
-      default: null,
-    },
-    publicId: {
-      type: String,
-      default: null,
-    },
-    uploadedAt: {
-      type: Date,
-      default: null,
-    },
-  },
-  // Security & Privacy Settings
-  security: {
-    twoFactorEnabled: {
-      type: Boolean,
-      default: false,
-    },
-    lastPasswordChange: {
-      type: Date,
-      default: Date.now,
-    },
-    loginAttempts: {
-      type: Number,
-      default: 0,
-    },
-    accountLocked: {
-      type: Boolean,
-      default: false,
-    },
-    lockedUntil: {
-      type: Date,
-      default: null,
-    },
-    refreshTokens: [{
-      token: String,
-      createdAt: {
-        type: Date,
-        default: Date.now,
-        expires: '7d'
-      }
-    }]
-  },
-  // Privacy Settings
-  privacy: {
-    profileVisibility: {
-      type: String,
-      enum: ['public', 'private', 'limited'],
-      default: 'public',
-    },
-    showPhoneNumber: {
-      type: Boolean,
-      default: true,
-    },
-    showEmail: {
-      type: Boolean,
-      default: false,
-    },
-    dataProcessingConsent: {
-      type: Boolean,
-      default: true,
-    },
-    marketingConsent: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  // Notification Preferences
-  notifications: {
-    email: {
-      bookingUpdates: {
-        type: Boolean,
-        default: true,
-      },
-      promotions: {
-        type: Boolean,
-        default: false,
-      },
-      reminders: {
-        type: Boolean,
-        default: true,
-      },
-    },
-    push: {
-      bookingUpdates: {
-        type: Boolean,
-        default: true,
-      },
-      promotions: {
-        type: Boolean,
-        default: false,
-      },
-      reminders: {
-        type: Boolean,
-        default: true,
-      },
-    },
-    deviceTokens: [{
-      token: String,
-      platform: {
-        type: String,
-        enum: ['ios', 'android'],
-      },
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    }],
-  },
-  // Account Status
   isActive: {
     type: Boolean,
     default: true,
@@ -153,10 +36,6 @@ const userSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false,
-  },
-  lastLoginAt: {
-    type: Date,
-    default: null,
   },
   createdAt: {
     type: Date,

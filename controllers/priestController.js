@@ -1,9 +1,9 @@
 // controllers/priestController.js
-const PriestProfile = require('../models/priestProfile');
-const User = require('../models/user');
-const Booking = require('../models/booking');
-const Transaction = require('../models/transaction');
-const Notification = require('../models/notification');
+const PriestProfile = require("../models/priestProfile");
+const User = require("../models/user");
+const Booking = require("../models/booking");
+const Transaction = require("../models/transaction");
+const Notification = require("../models/notification");
 
 // Create or update priest profile
 exports.updateProfile = async (req, res) => {
@@ -16,7 +16,7 @@ exports.updateProfile = async (req, res) => {
       description,
       profilePicture,
       priceList,
-      availability
+      availability,
     } = req.body;
 
     // Find existing profile
@@ -28,7 +28,7 @@ exports.updateProfile = async (req, res) => {
       templesAffiliated,
       ceremonies,
       description,
-      profilePicture
+      profilePicture,
     };
 
     // Only update priceList if provided
@@ -52,23 +52,20 @@ exports.updateProfile = async (req, res) => {
       // Create new profile
       profile = new PriestProfile({
         userId: req.user.id,
-        ...updateData
+        ...updateData,
       });
 
       await profile.save();
 
       // Update user's profileCompleted status
-      await User.findByIdAndUpdate(
-        req.user.id,
-        { profileCompleted: true }
-      );
+      await User.findByIdAndUpdate(req.user.id, { profileCompleted: true });
     }
 
     res.status(200).json(profile);
   } catch (error) {
-    console.error('Update priest profile error:', error);
+    console.error("Update priest profile error:", error);
     res.status(500).json({
-      message: 'Server error while updating priest profile'
+      message: "Server error while updating priest profile",
     });
   }
 };
@@ -79,14 +76,14 @@ exports.getProfile = async (req, res) => {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
 
     if (!profile) {
-      return res.status(404).json({ message: 'Profile not found' });
+      return res.status(404).json({ message: "Profile not found" });
     }
 
     res.status(200).json(profile);
   } catch (error) {
-    console.error('Get priest profile error:', error);
+    console.error("Get priest profile error:", error);
     res.status(500).json({
-      message: 'Server error while fetching priest profile'
+      message: "Server error while fetching priest profile",
     });
   }
 };
@@ -94,23 +91,25 @@ exports.getProfile = async (req, res) => {
 // Get priest's bookings
 exports.getBookings = async (req, res) => {
   try {
-    const { status } = req.query;
-    const query = { priestId: req.user.id };
-    
+    console.log("in priest get bookings", req.query);
+    const category = req.query.status;
+    const query = { priestId: req.query.priestId };
+
     // Add status filter if provided
-    if (status) {
-      query.status = status;
+    if (category) {
+      query.category = category;
     }
 
+    console.log(query);
     const bookings = await Booking.find(query)
-    .populate('devoteeId', 'name email phone')
-    .sort({ date: -1 }); // Most recent first
-
+      .populate("devoteeId", "name email phone")
+      .sort({ date: -1 }); // Most recent first
+    console.log("bookings:", bookings);
     res.status(200).json(bookings);
   } catch (error) {
-    console.error('Get bookings error:', error);
+    console.error("Get bookings error:", error);
     res.status(500).json({
-      message: 'Server error while fetching bookings'
+      message: "Server error while fetching bookings",
     });
   }
 };
@@ -118,7 +117,8 @@ exports.getBookings = async (req, res) => {
 // Get priest's earnings based on completed bookings
 exports.getEarnings = async (req, res) => {
   try {
-    const priestId = req.user.id;
+    console.log(req.query);
+    const { priestId } = req.query;
     const { period } = req.query;
 
     // Calculate date ranges
@@ -130,16 +130,16 @@ exports.getEarnings = async (req, res) => {
     // Get completed bookings for current month
     const currentMonthBookings = await Booking.find({
       priestId: priestId,
-      status: 'completed',
-      completionDate: { $gte: currentMonth }
-    }).populate('devoteeId', 'name');
+      status: "completed",
+      completionDate: { $gte: currentMonth },
+    }).populate("devoteeId", "name");
 
     // Get completed bookings for last month
     const lastMonthBookings = await Booking.find({
       priestId: priestId,
-      status: 'completed',
-      completionDate: { $gte: lastMonth, $lte: lastMonthEnd }
-    }).populate('devoteeId', 'name');
+      status: "completed",
+      completionDate: { $gte: lastMonth, $lte: lastMonthEnd },
+    }).populate("devoteeId", "name");
 
     // Calculate earnings
     const thisMonthEarnings = currentMonthBookings.reduce((total, booking) => {
@@ -154,7 +154,8 @@ exports.getEarnings = async (req, res) => {
     // Calculate growth percentage
     let growthPercentage = 0;
     if (lastMonthEarnings > 0) {
-      growthPercentage = ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings) * 100;
+      growthPercentage =
+        ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings) * 100;
     } else if (thisMonthEarnings > 0) {
       growthPercentage = 100; // First month with earnings
     }
@@ -162,21 +163,21 @@ exports.getEarnings = async (req, res) => {
     // Get all transactions (completed bookings) sorted by date
     const allCompletedBookings = await Booking.find({
       priestId: priestId,
-      status: 'completed'
+      status: "completed",
     })
-    .populate('devoteeId', 'name')
-    .sort({ completionDate: -1 })
-    .limit(10); // Get latest 10 transactions
+      .populate("devoteeId", "name")
+      .sort({ completionDate: -1 })
+      .limit(10); // Get latest 10 transactions
 
     // Format transactions
-    const transactions = allCompletedBookings.map(booking => ({
+    const transactions = allCompletedBookings.map((booking) => ({
       id: booking._id,
       amount: booking.basePrice,
-      type: 'earnings',
+      type: "earnings",
       date: booking.completionDate || booking.date,
       description: booking.ceremonyType,
-      client: booking.devoteeId?.name || 'Unknown Client',
-      status: 'completed'
+      client: booking.devoteeId?.name || "Unknown Client",
+      status: "completed",
     }));
 
     // Calculate available balance (for simplicity, using current month earnings)
@@ -190,14 +191,14 @@ exports.getEarnings = async (req, res) => {
       availableBalance: availableBalance,
       transactions: transactions,
       totalBookings: currentMonthBookings.length,
-      totalCompletedBookings: allCompletedBookings.length
+      totalCompletedBookings: allCompletedBookings.length,
     };
 
     res.status(200).json(earnings);
   } catch (error) {
-    console.error('Get earnings error:', error);
+    console.error("Get earnings error:", error);
     res.status(500).json({
-      message: 'Server error while fetching earnings'
+      message: "Server error while fetching earnings",
     });
   }
 };
@@ -210,17 +211,17 @@ exports.requestWithdrawal = async (req, res) => {
 
     // Validate amount
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: 'Invalid withdrawal amount' });
+      return res.status(400).json({ message: "Invalid withdrawal amount" });
     }
 
     // Get current available balance
     const now = new Date();
     const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    
+
     const currentMonthBookings = await Booking.find({
       priestId: priestId,
-      status: 'completed',
-      completionDate: { $gte: currentMonth }
+      status: "completed",
+      completionDate: { $gte: currentMonth },
     });
 
     const availableBalance = currentMonthBookings.reduce((total, booking) => {
@@ -229,35 +230,35 @@ exports.requestWithdrawal = async (req, res) => {
 
     // Check if user has sufficient balance
     if (amount > availableBalance) {
-      return res.status(400).json({ 
-        message: 'Insufficient balance for withdrawal',
-        availableBalance: availableBalance
+      return res.status(400).json({
+        message: "Insufficient balance for withdrawal",
+        availableBalance: availableBalance,
       });
     }
 
     // Create withdrawal transaction record
     const transaction = new Transaction({
       userId: priestId,
-      type: 'withdrawal',
+      type: "withdrawal",
       amount: amount,
-      status: 'pending',
+      status: "pending",
       paymentMethod: paymentMethod,
-      description: 'Earnings withdrawal request',
-      createdAt: new Date()
+      description: "Earnings withdrawal request",
+      createdAt: new Date(),
     });
 
     await transaction.save();
 
     res.status(200).json({
-      message: 'Withdrawal request submitted successfully',
+      message: "Withdrawal request submitted successfully",
       transactionId: transaction._id,
       amount: amount,
-      status: 'pending'
+      status: "pending",
     });
   } catch (error) {
-    console.error('Withdrawal request error:', error);
+    console.error("Withdrawal request error:", error);
     res.status(500).json({
-      message: 'Server error while processing withdrawal request'
+      message: "Server error while processing withdrawal request",
     });
   }
 };
@@ -267,7 +268,7 @@ exports.getTransactions = async (req, res) => {
   try {
     const { type, limit = 20 } = req.query;
     const priestId = req.user.id;
-    
+
     const query = { userId: priestId };
     if (type) {
       query.type = type;
@@ -279,9 +280,9 @@ exports.getTransactions = async (req, res) => {
 
     res.status(200).json(transactions);
   } catch (error) {
-    console.error('Get transactions error:', error);
+    console.error("Get transactions error:", error);
     res.status(500).json({
-      message: 'Server error while fetching transactions'
+      message: "Server error while fetching transactions",
     });
   }
 };
@@ -290,10 +291,10 @@ exports.getTransactions = async (req, res) => {
 exports.getNotifications = async (req, res) => {
   try {
     const { limit = 50, unreadOnly = false } = req.query;
-    const priestId = req.user.id;
-    
+    const priestId = req.query.priestId;
+
     const query = { userId: priestId };
-    if (unreadOnly === 'true') {
+    if (unreadOnly === "true") {
       query.read = false;
     }
 
@@ -303,9 +304,9 @@ exports.getNotifications = async (req, res) => {
 
     res.status(200).json(notifications);
   } catch (error) {
-    console.error('Get notifications error:', error);
+    console.error("Get notifications error:", error);
     res.status(500).json({
-      message: 'Server error while fetching notifications'
+      message: "Server error while fetching notifications",
     });
   }
 };
@@ -323,14 +324,16 @@ exports.markNotificationAsRead = async (req, res) => {
     );
 
     if (!notification) {
-      return res.status(404).json({ message: 'Notification not found' });
+      return res.status(404).json({ message: "Notification not found" });
     }
 
-    res.status(200).json({ message: 'Notification marked as read', notification });
+    res
+      .status(200)
+      .json({ message: "Notification marked as read", notification });
   } catch (error) {
-    console.error('Mark notification as read error:', error);
+    console.error("Mark notification as read error:", error);
     res.status(500).json({
-      message: 'Server error while marking notification as read'
+      message: "Server error while marking notification as read",
     });
   }
 };
@@ -345,11 +348,11 @@ exports.markAllNotificationsAsRead = async (req, res) => {
       { read: true, updatedAt: new Date() }
     );
 
-    res.status(200).json({ message: 'All notifications marked as read' });
+    res.status(200).json({ message: "All notifications marked as read" });
   } catch (error) {
-    console.error('Mark all notifications as read error:', error);
+    console.error("Mark all notifications as read error:", error);
     res.status(500).json({
-      message: 'Server error while marking all notifications as read'
+      message: "Server error while marking all notifications as read",
     });
   }
 };
@@ -362,34 +365,36 @@ exports.updateBookingStatus = async (req, res) => {
     const priestId = req.user.id;
 
     // Validate status
-    const validStatuses = ['confirmed', 'completed', 'cancelled'];
+    const validStatuses = ["confirmed", "completed", "cancelled"];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ 
-        message: 'Invalid status. Must be: confirmed, completed, or cancelled' 
+      return res.status(400).json({
+        message: "Invalid status. Must be: confirmed, completed, or cancelled",
       });
     }
 
     // Find the booking and verify it belongs to this priest
-    const booking = await Booking.findOne({ _id: bookingId, priestId })
-      .populate('devoteeId', 'name');
+    const booking = await Booking.findOne({
+      _id: bookingId,
+      priestId,
+    }).populate("devoteeId", "name");
 
     if (!booking) {
-      return res.status(404).json({ message: 'Booking not found' });
+      return res.status(404).json({ message: "Booking not found" });
     }
 
     // Update booking status
-    const updateData = { 
-      status, 
-      updatedAt: new Date() 
+    const updateData = {
+      status,
+      updatedAt: new Date(),
     };
-    
+
     if (notes) {
       updateData.notes = notes;
     }
 
-    if (status === 'completed') {
+    if (status === "completed") {
       updateData.completionDate = new Date();
-    } else if (status === 'cancelled') {
+    } else if (status === "cancelled") {
       updateData.cancellationDate = new Date();
       if (notes) {
         updateData.cancellationReason = notes;
@@ -400,27 +405,37 @@ exports.updateBookingStatus = async (req, res) => {
       bookingId,
       updateData,
       { new: true }
-    ).populate('devoteeId', 'name');
+    ).populate("devoteeId", "name");
 
     // Create notification for the devotee
     try {
       let notificationTitle, notificationMessage, notificationType;
-      
+
       switch (status) {
-        case 'confirmed':
-          notificationTitle = 'Booking Confirmed';
-          notificationMessage = `Your booking for ${booking.ceremonyType} on ${new Date(booking.date).toLocaleDateString()} has been confirmed by the priest.`;
-          notificationType = 'booking';
+        case "confirmed":
+          notificationTitle = "Booking Confirmed";
+          notificationMessage = `Your booking for ${
+            booking.ceremonyType
+          } on ${new Date(
+            booking.date
+          ).toLocaleDateString()} has been confirmed by the priest.`;
+          notificationType = "booking";
           break;
-        case 'completed':
-          notificationTitle = 'Payment Received';
+        case "completed":
+          notificationTitle = "Payment Received";
           notificationMessage = `You have received ₹${booking.basePrice} for ${booking.ceremonyType} ceremony.`;
-          notificationType = 'payment';
+          notificationType = "payment";
           break;
-        case 'cancelled':
-          notificationTitle = 'Booking Cancelled';
-          notificationMessage = `Your booking for ${booking.ceremonyType} on ${new Date(booking.date).toLocaleDateString()} has been cancelled.${notes ? ' Reason: ' + notes : ''}`;
-          notificationType = 'booking';
+        case "cancelled":
+          notificationTitle = "Booking Cancelled";
+          notificationMessage = `Your booking for ${
+            booking.ceremonyType
+          } on ${new Date(
+            booking.date
+          ).toLocaleDateString()} has been cancelled.${
+            notes ? " Reason: " + notes : ""
+          }`;
+          notificationType = "booking";
           break;
       }
 
@@ -430,34 +445,39 @@ exports.updateBookingStatus = async (req, res) => {
         title: notificationTitle,
         message: notificationMessage,
         type: notificationType,
-        relatedId: booking._id
+        relatedId: booking._id,
       });
 
       // If completed, also create a payment notification for the priest
-      if (status === 'completed') {
+      if (status === "completed") {
         await Notification.createNotification({
           userId: priestId,
-          title: 'Payment Received',
-          message: `You have received ₹${booking.basePrice} for ${booking.ceremonyType} ceremony with ${booking.devoteeId?.name || 'devotee'}.`,
-          type: 'payment',
-          relatedId: booking._id
+          title: "Payment Received",
+          message: `You have received ₹${booking.basePrice} for ${
+            booking.ceremonyType
+          } ceremony with ${booking.devoteeId?.name || "devotee"}.`,
+          type: "payment",
+          relatedId: booking._id,
         });
       }
 
-      console.log('Notification created for status update:', status);
+      console.log("Notification created for status update:", status);
     } catch (notificationError) {
-      console.error('Error creating notification for status update:', notificationError);
+      console.error(
+        "Error creating notification for status update:",
+        notificationError
+      );
       // Don't fail the status update if notification fails
     }
 
     res.status(200).json({
       message: `Booking ${status} successfully`,
-      booking: updatedBooking
+      booking: updatedBooking,
     });
   } catch (error) {
-    console.error('Update booking status error:', error);
+    console.error("Update booking status error:", error);
     res.status(500).json({
-      message: 'Server error while updating booking status'
+      message: "Server error while updating booking status",
     });
   }
 };

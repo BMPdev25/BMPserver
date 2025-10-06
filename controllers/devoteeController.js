@@ -21,11 +21,14 @@ exports.getAllPriests = async (req, res) => {
       priests: allPriests.map(priest => ({
         _id: priest._id,
         name: priest.userId?.name || 'No name',
+        email: priest.userId?.email || '',
+        phone: priest.userId?.phone || '',
         experience: priest.experience,
         religiousTradition: priest.religiousTradition,
         ceremonies: priest.ceremonies,
         isVerified: priest.isVerified,
-        hasUserId: !!priest.userId
+        hasUserId: !!priest.userId,
+        location: priest.userId?.location
       }))
     });
   } catch (error) {
@@ -41,7 +44,7 @@ exports.getAllPriests = async (req, res) => {
 exports.searchPriests = async (req, res) => {
   try {
     const { ceremony, city, date, page = 1, limit = 10 } = req.query;
-    console.log('Search priests request:', req.query);
+    // console.log('Search priests request:', req.query);
     
     // Build query filter
     const filter = {};
@@ -54,7 +57,7 @@ exports.searchPriests = async (req, res) => {
       filter['userId.location.city'] = new RegExp(city, 'i');
     }
     
-    console.log('Search filter:', filter);
+    // console.log('Search filter:', filter);
     
     // Get priest profiles with user details
     const priests = await PriestProfile.find(filter)
@@ -64,20 +67,24 @@ exports.searchPriests = async (req, res) => {
       .skip((page - 1) * limit)
       .exec();
     
-    console.log('Found priests count:', priests.length);
-    console.log('Sample priest data:', priests[0] ? {
-      _id: priests[0]._id,
-      userId: priests[0].userId,
-      experience: priests[0].experience,
-      religiousTradition: priests[0].religiousTradition,
-      ceremonies: priests[0].ceremonies,
-      isVerified: priests[0].isVerified
-    } : 'No priests found');
+    // console.log('Found priests count:', priests.length);
+    // console.log(priests);
+    // console.log('Sample priest data:', priests[0] ? {
+    //   _id: priests[0]._id,
+    //   userId: priests[0].userId,
+    //   experience: priests[0].experience,
+    //   religiousTradition: priests[0].religiousTradition,
+    //   ceremonies: priests[0].ceremonies,
+    //   isVerified: priests[0].isVerified
+    // } : 'No priests found');
     
     // Filter out priests who are not verified (all priests are verified by default now)
     const verifiedPriests = priests.filter(priest => priest.isVerified !== false);
     
-    console.log('Verified priests count:', verifiedPriests.length);
+    // console.log('Verified priests count:', verifiedPriests);
+    // verifiedPriests.map(p=> {
+    //   console.log(p.name)
+    // });
     
     // Format response
     const formattedPriests = verifiedPriests.map(priest => ({
@@ -96,7 +103,8 @@ exports.searchPriests = async (req, res) => {
       isVerified: priest.isVerified,
     }));
     
-    console.log('Formatted priests count:', formattedPriests.length);
+    // console.log('Formatted priests count:', formattedPriests);
+    // console.log('Formatted priests count:', formattedPriests.length);
     
     res.status(200).json({
       priests: formattedPriests,
@@ -186,7 +194,7 @@ exports.getPriestDetails = async (req, res) => {
 // Get devotee's bookings
 exports.getBookings = async (req, res) => {
   try {
-    const devoteeId = req.user.id;
+  const {devoteeId} = req.params;
     console.log('Fetching bookings for devoteeId:', devoteeId);
     // Fetch bookings for this devotee
     const bookings = await Booking.find({ devoteeId })
@@ -206,8 +214,9 @@ exports.getBookings = async (req, res) => {
 
 // Create a booking
 exports.createBooking = async (req, res) => {
+  console.log(req.user)
   try {
-    const devoteeId = req.user.id;
+    const devoteeId = req.body.devoteeId;
     console.log('Creating booking for devoteeId:', devoteeId, 'with body:', req.body);
     
     // Validate required fields
