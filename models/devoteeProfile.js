@@ -1,4 +1,3 @@
-// models/devoteeProfile.js
 const mongoose = require('mongoose');
 
 const devoteeProfileSchema = new mongoose.Schema({

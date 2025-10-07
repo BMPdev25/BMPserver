@@ -6,8 +6,8 @@ const { protect, priestOnly } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 // All priest routes need authentication and priest role
-// router.use(protect);
-// router.use(priestOnly);
+router.use(protect);
+router.use(priestOnly);
 
 // Profile routes
 router.put('/profile', priestController.updateProfile);

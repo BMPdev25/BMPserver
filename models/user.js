@@ -45,6 +45,28 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  // Security-related fields with sensible defaults
+  security: {
+    loginAttempts: { type: Number, default: 0 },
+    accountLocked: { type: Boolean, default: false },
+    lockedUntil: { type: Date, default: null },
+    lastPasswordChange: { type: Date, default: null },
+    twoFactorEnabled: { type: Boolean, default: false },
+    refreshTokens: { type: Array, default: [] },
+  },
+  // Notification preference defaults
+  notifications: {
+    email: {
+      bookingUpdates: { type: Boolean, default: true },
+      promotions: { type: Boolean, default: false },
+      reminders: { type: Boolean, default: true }
+    },
+    push: {
+      bookingUpdates: { type: Boolean, default: true },
+      promotions: { type: Boolean, default: false },
+      reminders: { type: Boolean, default: true }
+    }
+  },
 });
 
 // Indexes for performance
@@ -57,6 +79,17 @@ userSchema.index({ createdAt: -1 });
 // Update timestamp before saving
 userSchema.pre('save', function(next) {
   this.updatedAt = Date.now();
+  // Ensure security object exists with defaults on save for older documents
+  if (!this.security) {
+    this.security = {
+      loginAttempts: 0,
+      accountLocked: false,
+      lockedUntil: null,
+      lastPasswordChange: null,
+      twoFactorEnabled: false,
+      refreshTokens: [],
+    };
+  }
   next();
 });
 
@@ -67,12 +100,19 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
 
 // Method to check if account is locked
 userSchema.methods.isAccountLocked = function() {
+  // Guard against missing security object
+  if (!this.security) return false;
   return !!(this.security.accountLocked && this.security.lockedUntil && this.security.lockedUntil > Date.now());
 };
 
 // Method to increment login attempts
 userSchema.methods.incrementLoginAttempts = async function() {
   // Reset attempts if lock has expired
+  // Guard against missing security object
+  if (!this.security) {
+    this.security = { loginAttempts: 0, accountLocked: false, lockedUntil: null };
+  }
+
   if (this.security.lockedUntil && this.security.lockedUntil < Date.now()) {
     return this.updateOne({
       $unset: {
@@ -90,7 +130,7 @@ userSchema.methods.incrementLoginAttempts = async function() {
   const lockTime = 2 * 60 * 60 * 1000; // 2 hours
 
   // Lock account if max attempts reached
-  if (this.security.loginAttempts + 1 >= maxAttempts && !this.security.accountLocked) {
+  if ((this.security.loginAttempts || 0) + 1 >= maxAttempts && !this.security.accountLocked) {
     updates.$set = {
       'security.accountLocked': true,
       'security.lockedUntil': Date.now() + lockTime,
@@ -102,6 +142,11 @@ userSchema.methods.incrementLoginAttempts = async function() {
 
 // Method to reset login attempts
 userSchema.methods.resetLoginAttempts = async function() {
+  // Ensure security object exists
+  if (!this.security) {
+    this.security = { loginAttempts: 0, accountLocked: false, lockedUntil: null };
+  }
+
   return this.updateOne({
     $unset: {
       'security.loginAttempts': 1,
@@ -117,7 +162,10 @@ userSchema.methods.resetLoginAttempts = async function() {
 userSchema.methods.toSafeObject = function() {
   const userObject = this.toObject();
   delete userObject.password;
-  delete userObject.security.refreshTokens;
+  // Guard against cases where security or refreshTokens might be undefined
+  if (userObject.security && Object.prototype.hasOwnProperty.call(userObject.security, 'refreshTokens')) {
+    delete userObject.security.refreshTokens;
+  }
   return userObject;
 };
 

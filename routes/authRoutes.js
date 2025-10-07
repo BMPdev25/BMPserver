@@ -10,10 +10,3 @@ router.post('/register', authController.register);
 router.post('/login', authController.login);
 
 module.exports = router;
-
-// Placeholder route for testing
-router.get('/test', (req, res) => {
-  res.json({ message: 'Auth route is working' });
-});
-
-module.exports = router;

@@ -11,18 +11,11 @@ router.get('/priests', devoteeController.searchPriests);
 router.get('/priests/:priestId', devoteeController.getPriestDetails);
 
 // Protected routes (need authentication and devotee role)
-router.get('/bookings/:devoteeId', devoteeController.getBookings);
-router.post('/bookings', devoteeController.createBooking);
+router.get('/bookings', protect, devoteeOnly, devoteeController.getBookings);
+router.post('/bookings', protect, devoteeOnly, devoteeController.createBooking);
 
 // Add devotee profile update route
 router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
-
-// // Protected routes (need authentication and devotee role)
-// router.get('/bookings', protect, devoteeOnly, devoteeController.getBookings);
-// router.post('/bookings', protect, devoteeOnly, devoteeController.createBooking);
-
-// // Add devotee profile update route
-// router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
 
 // Notification routes
 router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifications);

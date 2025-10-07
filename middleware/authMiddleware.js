@@ -16,6 +16,7 @@ exports.protect = async (req, res, next) => {
     }
 
     if (!token) {
+      console.log("Token is missing")
       return res.status(401).json({
         message: 'Not authorized, no token provided'
       });
@@ -53,7 +54,6 @@ exports.priestOnly = (req, res, next) => {
 
 // Middleware to restrict access to devotee only
 exports.devoteeOnly = (req, res, next) => {
-  console.log(req.user)
   if (req.user && req.user.userType === 'devotee') {
     next();
   } else {
