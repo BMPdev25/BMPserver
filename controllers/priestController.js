@@ -1,4 +1,3 @@
-// controllers/priestController.js
 const PriestProfile = require("../models/priestProfile");
 const User = require("../models/user");
 const Booking = require("../models/booking");

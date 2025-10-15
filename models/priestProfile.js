@@ -57,6 +57,7 @@ const priestProfileSchema = new mongoose.Schema({
   availability: {
     type: Map,
     of: [{
+      available: Boolean,
       startTime: String,
       endTime: String,
     }],
