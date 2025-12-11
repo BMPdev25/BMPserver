@@ -16,6 +16,7 @@ const ratingRoutes = require('./routes/ratingRoutes');
 const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const ceremonyRoutes = require("./routes/ceremonyRoutes");
 
 // Load environment variables
 dotenv.config();
@@ -74,6 +75,7 @@ app.use('/api/ratings', ratingRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/search', searchRoutes);
+app.use("/api/ceremonies", ceremonyRoutes);
 
 // Socket.IO real-time features
 io.on('connection', (socket) => {
@@ -136,3 +138,4 @@ server.listen(PORT, () => {
   console.log(`Server running on localhost:${PORT}`);
   console.log('Socket.IO enabled for real-time features');
 });
+

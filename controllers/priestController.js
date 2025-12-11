@@ -16,9 +16,10 @@ exports.updateProfile = async (req, res) => {
       profilePicture,
       priceList,
       availability,
+      services,
+      location
     } = req.body;
 
-    // Find existing profile
     let profile = await PriestProfile.findOne({ userId: req.user.id });
 
     const updateData = {
@@ -30,44 +31,33 @@ exports.updateProfile = async (req, res) => {
       profilePicture,
     };
 
-    // Only update priceList if provided
-    if (priceList) {
-      updateData.priceList = priceList;
-    }
-
-    // Only update availability if provided
-    if (availability) {
-      updateData.availability = availability;
-    }
+    if (priceList) updateData.priceList = priceList;
+    if (availability) updateData.availability = availability;
+    if (services) updateData.services = services;
+    if (location) updateData.location = location;
 
     if (profile) {
-      // Update existing profile
       profile = await PriestProfile.findOneAndUpdate(
         { userId: req.user.id },
         updateData,
         { new: true }
       );
     } else {
-      // Create new profile
       profile = new PriestProfile({
         userId: req.user.id,
         ...updateData,
       });
-
       await profile.save();
-
-      // Update user's profileCompleted status
       await User.findByIdAndUpdate(req.user.id, { profileCompleted: true });
     }
 
     res.status(200).json(profile);
   } catch (error) {
     console.error("Update priest profile error:", error);
-    res.status(500).json({
-      message: "Server error while updating priest profile",
-    });
+    res.status(500).json({ message: "Server error while updating priest profile" });
   }
 };
+
 
 // Get priest profile
 exports.getProfile = async (req, res) => {
@@ -478,5 +468,50 @@ exports.updateBookingStatus = async (req, res) => {
     res.status(500).json({
       message: "Server error while updating booking status",
     });
+  }
+};
+
+// Get pujaris available for a specific ceremony (with optional radius filter)
+exports.getAvailablePujaris = async (req, res) => {
+  try {
+    const { ceremonyId, lat, lng, radius = 10 } = req.query;
+
+    if (!ceremonyId) {
+      return res.status(400).json({ message: "ceremonyId is required" });
+    }
+
+    // Build geo filter only if location is provided
+    let geoFilter = {};
+
+    if (lat && lng) {
+      geoFilter = {
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [parseFloat(lng), parseFloat(lat)],
+            },
+            $maxDistance: parseFloat(radius) * 1000, // km to meters
+          },
+        },
+      };
+    }
+
+    // Find pujaris who offer this puja
+    const pujaris = await PriestProfile.find({
+      ...geoFilter,
+      "services.ceremonyId": ceremonyId,
+      isVerified: true,
+    })
+      .select(
+        "userId name profilePicture religiousTradition rating languages services location"
+      )
+      .populate("services.ceremonyId", "name requirements durationMinutes")
+      .populate("userId", "name phone");
+
+    return res.json({ pujaris });
+  } catch (error) {
+    console.error("Error fetching available pujaris:", error);
+    res.status(500).json({ message: "Server error fetching pujaris" });
   }
 };
