@@ -29,6 +29,8 @@ exports.getAllPriests = async (req, res) => {
         isVerified: priest.isVerified,
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
+        profilePicture: priest.profilePicture,
+        rating: priest.ratings, // Map to singular 'rating'
       })),
     });
   } catch (error) {
@@ -98,7 +100,7 @@ exports.searchPriests = async (req, res) => {
       religiousTradition: priest.religiousTradition,
       ceremonies: priest.ceremonies,
       profilePicture: priest.profilePicture,
-      ratings: priest.ratings,
+      rating: priest.ratings, // Map to singular 'rating'
       ceremonyCount: priest.ceremonyCount,
       location: priest.userId?.location,
       priceList: priest.priceList,
@@ -146,7 +148,7 @@ exports.getPriestDetails = async (req, res) => {
           priest.description ||
           "Experienced priest specializing in various religious ceremonies.",
         profilePicture: priest.profilePicture || "",
-        ratings: priest.ratings || { average: 4.5, count: 50 },
+        rating: priest.ratings || { average: 4.5, count: 50 }, // Map to singular 'rating'
         availability: "available",
         priceList: priest.priceList || {
           Wedding: 15000,

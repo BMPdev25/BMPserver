@@ -2,11 +2,13 @@
 const express = require('express');
 const priestController = require('../controllers/priestController');
 const { protect, priestOnly } = require('../middleware/authMiddleware');
-const priestController = require("../controllers/priestController");
 
 const router = express.Router();
 
-// All priest routes need authentication and priest role
+// Public / Devotee accessible routes
+router.get("/available", priestController.getAvailablePujaris);
+
+// All following routes need authentication and priest role
 router.use(protect);
 router.use(priestOnly);
 
@@ -29,7 +31,5 @@ router.get('/transactions', priestController.getTransactions);
 router.get('/notifications', priestController.getNotifications);
 router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
 router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
-
-router.get("/available", priestController.getAvailablePujaris);
 
 module.exports = router;

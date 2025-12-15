@@ -47,6 +47,9 @@ app.use(cors({
   credentials: true,
 }));
 
+// Serve static files
+app.use('/public', express.static('public'));
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);

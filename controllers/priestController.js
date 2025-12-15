@@ -498,16 +498,27 @@ exports.getAvailablePujaris = async (req, res) => {
     }
 
     // Find pujaris who offer this puja
-    const pujaris = await PriestProfile.find({
+    const pujarisDocs = await PriestProfile.find({
       ...geoFilter,
       "services.ceremonyId": ceremonyId,
       isVerified: true,
     })
       .select(
-        "userId name profilePicture religiousTradition rating languages services location"
+        "userId name profilePicture religiousTradition ratings languages services location"
       )
       .populate("services.ceremonyId", "name requirements durationMinutes")
       .populate("userId", "name phone");
+
+    const pujaris = pujarisDocs.map(p => {
+        const doc = p.toObject();
+        return {
+            ...doc,
+            name: doc.userId?.name || "Unknown Priest",
+            phone: doc.userId?.phone,
+            rating: doc.ratings, // Map schema 'ratings' to frontend 'rating'
+            // userId object might be needed for ID, but we flat mapped name
+        };
+    });
 
     return res.json({ pujaris });
   } catch (error) {
