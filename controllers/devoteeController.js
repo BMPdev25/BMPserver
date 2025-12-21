@@ -61,6 +61,23 @@ exports.searchPriests = async (req, res) => {
 
     // console.log('Search filter:', filter);
 
+    // If search term is provided, we need to find matching users first (by name)
+    // and then add them to the priest filter
+    if (req.query.search) {
+      const searchRegex = new RegExp(req.query.search, "i");
+      
+      // Find users matching the name
+      const matchingUsers = await User.find({ name: searchRegex }).select('_id');
+      const matchingUserIds = matchingUsers.map(u => u._id);
+
+      // Add to filter with OR condition for name, description, or ceremonies
+      filter.$or = [
+        { userId: { $in: matchingUserIds } },
+        { description: searchRegex },
+        { ceremonies: { $elemMatch: { $regex: searchRegex } } } // Better regex search for array strings
+      ];
+    }
+
     // Get priest profiles with user details
     const priests = await PriestProfile.find(filter)
       .populate("userId", "name email phone location")
@@ -134,16 +151,26 @@ exports.getPriestDetails = async (req, res) => {
     // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
       .populate("userId", "name email phone location")
+      .populate("services.ceremonyId", "name") // Populate ceremony details
       .exec();
 
     if (priest) {
       console.log("Found actual priest:", priest.userId?.name);
+      
+      // Map services to ceremonies format expected by frontend
+      const mappedCeremonies = priest.services?.map(service => ({
+        id: service.ceremonyId?._id,
+        name: service.ceremonyId?.name || "Unknown Ceremony",
+        price: service.price,
+        duration: service.durationMinutes
+      })) || [];
+
       const priestData = {
         _id: priest._id,
         name: priest.userId?.name || "Unknown Priest",
         experience: priest.experience,
         religiousTradition: priest.religiousTradition,
-        ceremonies: priest.ceremonies,
+        ceremonies: mappedCeremonies, // Use mapped services
         description:
           priest.description ||
           "Experienced priest specializing in various religious ceremonies.",
@@ -456,5 +483,113 @@ exports.markAllNotificationsAsRead = async (req, res) => {
     res.status(500).json({
       message: "Server error while marking all notifications as read",
     });
+  }
+};
+
+// --- Address Management ---
+
+// Get user addresses
+exports.getAddresses = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('addresses');
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.status(200).json(user.addresses || []);
+  } catch (error) {
+    console.error("Get addresses error:", error);
+    res.status(500).json({ message: "Server error getting addresses" });
+  }
+};
+
+// Add new address
+exports.addAddress = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const newAddress = req.body;
+    
+    // If set as default, unset other defaults
+    if (newAddress.isDefault) {
+      user.addresses.forEach(addr => addr.isDefault = false);
+    } 
+    // If it's the first address, make it default automatically
+    else if (user.addresses.length === 0) {
+      newAddress.isDefault = true;
+    }
+
+    user.addresses.push(newAddress);
+    await user.save();
+
+    res.status(201).json(user.addresses);
+  } catch (error) {
+    console.error("Add address error:", error);
+    res.status(500).json({ message: "Server error adding address" });
+  }
+};
+
+// Update address
+exports.updateAddress = async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const updateData = req.body;
+    
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const addressIndex = user.addresses.findIndex(addr => addr._id.toString() === addressId);
+    if (addressIndex === -1) {
+      return res.status(404).json({ message: "Address not found" });
+    }
+
+    // Handle default toggle logic
+    if (updateData.isDefault) {
+      user.addresses.forEach(addr => addr.isDefault = false);
+    }
+
+    // Update fields
+    const address = user.addresses[addressIndex];
+    Object.keys(updateData).forEach(key => {
+        // Prevent updating _id
+        if (key !== '_id') {
+            address[key] = updateData[key];
+        }
+    });
+
+    await user.save();
+    res.status(200).json(user.addresses);
+  } catch (error) {
+    console.error("Update address error:", error);
+    res.status(500).json({ message: "Server error updating address" });
+  }
+};
+
+// Delete address
+exports.deleteAddress = async (req, res) => {
+  try {
+    const { addressId } = req.params;
+    const user = await User.findById(req.user.id);
+    
+    if (!user) {
+        return res.status(404).json({ message: "User not found" });
+    }
+
+    user.addresses = user.addresses.filter(addr => addr._id.toString() !== addressId);
+    
+    // If we deleted the default address and others exist, make the first one default
+    if (user.addresses.length > 0 && !user.addresses.some(addr => addr.isDefault)) {
+        user.addresses[0].isDefault = true;
+    }
+
+    await user.save();
+    res.status(200).json(user.addresses);
+  } catch (error) {
+    console.error("Delete address error:", error);
+    res.status(500).json({ message: "Server error deleting address" });
   }
 };

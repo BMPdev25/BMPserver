@@ -9,4 +9,7 @@ router.post('/register', authController.register);
 // Login user
 router.post('/login', authController.login);
 
+// Firebase login
+router.post('/firebase-login', authController.firebaseLogin);
+
 module.exports = router;

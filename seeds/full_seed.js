@@ -30,7 +30,7 @@ const ceremoniesData = [
       ]
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'https://images.unsplash.com/photo-1605656114881-229202c61172?q=80&w=600&auto=format&fit=crop', alt: 'Satyanarayan Puja', isPrimary: true }]
+    images: [{ url: 'http://192.168.29.44:5000/public/images/satyanarayan.jpg', alt: 'Satyanarayan Puja', isPrimary: true }]
   },
   {
     name: 'Griha Pravesh',
@@ -47,7 +47,7 @@ const ceremoniesData = [
        ]
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'https://images.unsplash.com/photo-1545638555-9cebb8c3132d?q=80&w=600&auto=format&fit=crop', alt: 'Griha Pravesh', isPrimary: true }]
+    images: [{ url: 'http://192.168.29.44:5000/public/images/grihapravesh.jpg', alt: 'Griha Pravesh', isPrimary: true }]
   },
   {
     name: 'Ganapati Homa',
@@ -63,7 +63,7 @@ const ceremoniesData = [
        ]
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'https://images.unsplash.com/photo-1563868694038-a89c3a32506e?q=80&w=600&auto=format&fit=crop', alt: 'Ganapati', isPrimary: true }]
+    images: [{ url: 'http://192.168.29.44:5000/public/images/ganapati.jpg', alt: 'Ganapati', isPrimary: true }]
   }
 ];
 
@@ -89,6 +89,7 @@ const seedDB = async () => {
     // 2. CREATE USERS
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('password123', salt);
+    const testPassword = await bcrypt.hash('123456', salt);
 
     // Devotee
     const devotee = await User.create({
@@ -98,6 +99,31 @@ const seedDB = async () => {
       userType: 'devotee',
       phone: '9876543210'
     });
+
+    // Test Users
+    await User.create([
+      {
+        name: 'Sunny',
+        email: 'sunny@bmp.com',
+        password: testPassword,
+        userType: 'devotee',
+        phone: '9999999991'
+      },
+      {
+        name: 'Anish',
+        email: 'anish@bmp.com',
+        password: testPassword,
+        userType: 'devotee',
+        phone: '9999999992'
+      },
+      {
+        name: 'Anirudh',
+        email: 'anirudh@bmp.com',
+        password: testPassword,
+        userType: 'devotee',
+        phone: '9999999993'
+      }
+    ]);
 
     // Priest 1
     const priest1 = await User.create({
@@ -125,7 +151,7 @@ const seedDB = async () => {
       religiousTradition: 'North Indian',
       description: 'Experienced Vedic Pandit performing all types of pujas.',
       languages: ['Hindi', 'Sanskrit', 'English'],
-      profilePicture: 'https://images.unsplash.com/photo-1594950920630-9b3780330455?q=80&w=200&auto=format&fit=crop',
+      profilePicture: 'http://192.168.29.44:5000/public/images/priest1.jpg',
       location: {
         type: 'Point',
         coordinates: [78.35, 17.45] // Hyderabad
@@ -144,7 +170,7 @@ const seedDB = async () => {
       religiousTradition: 'South Indian',
       description: 'Expert in South Indian traditions and Homas.',
       languages: ['Telugu', 'Sanskrit', 'Hindi'],
-      profilePicture: 'https://images.unsplash.com/photo-1518385289945-8c707d87bc7d?q=80&w=200&auto=format&fit=crop',
+      profilePicture: 'http://192.168.29.44:5000/public/images/priest2.jpg',
       location: {
         type: 'Point',
         coordinates: [78.40, 17.40] // Hyderabad slightly far
