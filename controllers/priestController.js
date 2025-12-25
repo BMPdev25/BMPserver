@@ -82,7 +82,7 @@ exports.getBookings = async (req, res) => {
   try {
     console.log("in priest get bookings", req.query);
     const category = req.query.status;
-    const query = { priestId: req.query.priestId };
+    const query = { priestId: req.user.id }; // Use authenticated user ID
 
     // Add status filter if provided
     if (category) {

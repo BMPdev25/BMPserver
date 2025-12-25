@@ -85,6 +85,8 @@ exports.register = async (req, res) => {
       email: user.email,
       phone: user.phone,
       userType: user.userType,
+      userType: user.userType,
+      profileCompleted: false, // Explicitly false for new users
       token,
     });
   } catch (error) {
