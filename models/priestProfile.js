@@ -31,7 +31,7 @@ const priestProfileSchema = new mongoose.Schema({
   experience: Number,
   religiousTradition: String,
   description: String,
-  ceremonies: [String], // Keep for backward compatibility
+  // ceremonies: [String], // Removed legacy field. Use services instead.
 
   // NEW: Link ceremonies with price + duration
   services: [PriestServiceSchema],

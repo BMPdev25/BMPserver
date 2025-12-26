@@ -25,7 +25,8 @@ exports.getAllPriests = async (req, res) => {
         phone: priest.userId?.phone || "",
         experience: priest.experience,
         religiousTradition: priest.religiousTradition,
-        ceremonies: priest.ceremonies,
+        religiousTradition: priest.religiousTradition,
+        // ceremonies: priest.ceremonies, // removed
         isVerified: priest.isVerified,
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
@@ -52,7 +53,8 @@ exports.searchPriests = async (req, res) => {
     const filter = {};
 
     if (ceremony) {
-      filter.ceremonies = { $in: [ceremony] };
+      // Legacy ceremony string search removed.
+      // TODO: Implement search by service/ceremonyId if needed
     }
 
     if (city) {
@@ -74,7 +76,7 @@ exports.searchPriests = async (req, res) => {
       filter.$or = [
         { userId: { $in: matchingUserIds } },
         { description: searchRegex },
-        { ceremonies: { $elemMatch: { $regex: searchRegex } } } // Better regex search for array strings
+        // { ceremonies: { $elemMatch: { $regex: searchRegex } } } // removed legacy
       ];
     }
 
@@ -115,7 +117,8 @@ exports.searchPriests = async (req, res) => {
       phone: priest.userId?.phone || "",
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      ceremonies: priest.ceremonies,
+      religiousTradition: priest.religiousTradition,
+      // ceremonies: priest.ceremonies, // removed
       profilePicture: priest.profilePicture,
       rating: priest.ratings, // Map to singular 'rating'
       ceremonyCount: priest.ceremonyCount,
@@ -197,10 +200,10 @@ exports.getPriestDetails = async (req, res) => {
       experience: 25,
       religiousTradition: "Hinduism",
       ceremonies: [
-        "Wedding",
-        "Grih Pravesh",
-        "Baby Naming",
-        "Satyanarayan Katha",
+        { name: "Wedding", price: 15000, duration: 120 },
+        { name: "Grih Pravesh", price: 8000, duration: 60 },
+        { name: "Baby Naming", price: 5000, duration: 45 },
+        { name: "Satyanarayan Katha", price: 11000, duration: 90 },
       ],
       description:
         "Experienced priest specializing in various religious ceremonies.",

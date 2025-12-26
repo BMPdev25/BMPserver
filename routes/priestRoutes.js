@@ -1,6 +1,7 @@
 // routes/priestRoutes.js
 const express = require('express');
 const priestController = require('../controllers/priestController');
+const bookingController = require('../controllers/bookingController');
 const { protect, priestOnly } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -18,6 +19,7 @@ router.get('/profile', priestController.getProfile);
 
 // Booking routes
 router.get('/bookings', priestController.getBookings);
+router.get('/bookings/:bookingId', bookingController.getBookingDetails);
 router.put('/bookings/:bookingId/status', priestController.updateBookingStatus);
 
 // Earnings routes

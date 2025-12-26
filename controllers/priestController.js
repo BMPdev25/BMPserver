@@ -11,7 +11,7 @@ exports.updateProfile = async (req, res) => {
       experience,
       religiousTradition,
       templesAffiliated,
-      ceremonies,
+      // ceremonies, // removed
       description,
       profilePicture,
       priceList,
@@ -26,7 +26,7 @@ exports.updateProfile = async (req, res) => {
       experience,
       religiousTradition,
       templesAffiliated,
-      ceremonies,
+      // ceremonies, // removed
       description,
       profilePicture,
     };
@@ -62,7 +62,7 @@ exports.updateProfile = async (req, res) => {
 // Get priest profile
 exports.getProfile = async (req, res) => {
   try {
-    const profile = await PriestProfile.findOne({ userId: req.user.id });
+    const profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
 
     if (!profile) {
       return res.status(404).json({ message: "Profile not found" });
@@ -80,20 +80,28 @@ exports.getProfile = async (req, res) => {
 // Get priest's bookings
 exports.getBookings = async (req, res) => {
   try {
-    console.log("in priest get bookings", req.query);
-    const category = req.query.status;
-    const query = { priestId: req.user.id }; // Use authenticated user ID
+    const { status } = req.query;
+    const query = { priestId: req.user.id };
 
-    // Add status filter if provided
-    if (category) {
-      query.category = category;
+    // Basic status filtering from DB if it matches a DB status
+    if (status && ['confirmed', 'pending', 'cancelled', 'completed'].includes(status)) {
+      query.status = status;
     }
 
-    console.log(query);
-    const bookings = await Booking.find(query)
+    let bookings = await Booking.find(query)
       .populate("devoteeId", "name email phone")
-      .sort({ date: -1 }); // Most recent first
-    console.log("bookings:", bookings);
+      .sort({ date: 1 }); // Ascending for upcoming
+
+    // Advanced filtering for virtual categories
+    if (status === 'upcoming') {
+      const now = new Date();
+      bookings = bookings.filter(b => b.status !== 'completed' && b.status !== 'cancelled' && new Date(b.date) >= now);
+    } else if (status === 'today') {
+      const now = new Date();
+      const todayString = now.toDateString();
+      bookings = bookings.filter(b => new Date(b.date).toDateString() === todayString);
+    }
+
     res.status(200).json(bookings);
   } catch (error) {
     console.error("Get bookings error:", error);

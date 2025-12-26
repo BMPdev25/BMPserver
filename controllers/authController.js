@@ -41,8 +41,7 @@ exports.register = async (req, res) => {
         userId: user._id,
         experience: req.body.experience || 0,
         religiousTradition: req.body.religiousTradition || '',
-        templesAffiliated: req.body.templesAffiliated || [],
-        ceremonies: req.body.ceremonies || [],
+        // ceremonies: req.body.ceremonies || [], // removed
         description: req.body.description || '',
         governmentIdVerified: req.body.governmentIdVerified || false,
         religiousCertificationVerified: req.body.religiousCertificationVerified || false,
@@ -65,7 +64,8 @@ exports.register = async (req, res) => {
         userId: user._id,
         address: req.body.address || {},
         preferences: req.body.preferences || {},
-        history: req.body.history || [],
+        preferences: req.body.preferences || {},
+        // history removed - use Booking collection
         isVerified: req.body.isVerified !== undefined ? req.body.isVerified : true,
         createdAt: new Date(),
         updatedAt: new Date()
