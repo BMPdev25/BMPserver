@@ -11,9 +11,23 @@ This project uses **MongoDB** with **Mongoose** for data modeling. The schema is
     - `userType`: Enum (`priest`, `devotee`)
     - `firebaseUid`: Sparse unique index (indicates Firebase Auth integration)
     - `security`: Nested object for limits, 2FA, locks.
+    - `languagesSpoken`: Array of ObjectId refs to `Language` (for priests)
+    - `addresses`: Array of address objects with type, location details
+    - `notifications`: Nested object for email and push notification preferences
 - **Relations**: Referenced by almost all other models.
 
-### 2. Booking (`models/booking.js`)
+### 2. Language (`models/language.js`)
+- **Purpose**: Catalog of languages spoken in India for priest profiles.
+- **Key Fields**:
+    - `name`: English name of the language
+    - `nativeName`: Native script name
+    - `code`: ISO language code (e.g., 'HI', 'BN')
+    - `speakersInMillions`: Number of speakers
+    - `rank`: Ranking by number of speakers (1-20)
+- **Relations**: Referenced by `User.languagesSpoken`
+- **Note**: Database contains top 20 languages spoken in India.
+
+### 3. Booking (`models/booking.js`)
 - **Purpose**: Manages appointment/service bookings between Devotees and Priests.
 - **Key Fields**:
     - `devoteeId`: Ref to `User`
@@ -22,36 +36,38 @@ This project uses **MongoDB** with **Mongoose** for data modeling. The schema is
     - `paymentStatus`: Enum (`pending`, `completed`, `refunded`)
     - `statusHistory`: Audit trail of status changes.
 
-### 3. PriestProfile (`models/priestProfile.js`)
+### 4. PriestProfile (`models/priestProfile.js`)
 - **Purpose**: Extended profile information for Priests.
 - **Key Fields**:
     - `userId`: Ref to `User`
     - `services`: Array of `PriestServiceSchema` (links to `Ceremony` with custom price/duration).
     - `location`: GeoJSON Point (for radius search).
     - `availability`, `schedule`: Maps for time management.
+    - `religiousTradition`: String (legacy field, kept for backward compatibility)
     *Legacy `ceremonies` field has been removed in favor of `services`.*
+- **Note**: Languages spoken are now stored in the User model, not PriestProfile.
 
-### 4. DevoteeProfile (`models/devoteeProfile.js`)
+### 5. DevoteeProfile (`models/devoteeProfile.js`)
 - **Purpose**: Extended profile for Devotees.
 - **Key Fields**:
     - `userId`: Ref to `User`
     - `preferences`: Preferred ceremonies/priests.
     *Note: `history` has been removed to avoid duplication; query `Booking` collection instead.*
 
-### 5. Ceremony (`models/ceremony.js`)
+### 6. Ceremony (`models/ceremony.js`)
 - **Purpose**: Catalog of available religious services.
 - **Key Fields**:
     - `name`, `category`, `subcategory`.
     - `pricing`, `duration`, `requirements`.
 
-### 6. Transaction (`models/transaction.js`)
+### 7. Transaction (`models/transaction.js`)
 - **Purpose**: Financial records.
 - **Key Fields**:
     - `priestId`: Ref to `User`
     - `bookingId`: Ref to `Booking` (Required for `earnings`, optional for `withdrawal`)
     - `type`, `amount`, `status`.
 
-### 7. Rating (`models/rating.js`)
+### 8. Rating (`models/rating.js`)
 - **Purpose**: Feedback system.
 - **Key Fields**:
     - `bookingId`: Ref to `Booking`
@@ -59,7 +75,7 @@ This project uses **MongoDB** with **Mongoose** for data modeling. The schema is
     - `userId`: Ref to `User`
     - `rating` (1-5), `categories` (breakdown).
 
-### 8. Notification (`models/notification.js`)
+### 9. Notification (`models/notification.js`)
 - **Purpose**: In-app notifications.
 - **Key Fields**:
     - `userId`: Ref to `User`
@@ -70,3 +86,8 @@ This project uses **MongoDB** with **Mongoose** for data modeling. The schema is
 - **Indexes**: Critical fields (`email`, `status`, foreign keys) are indexed for performance.
 - **Timestamps**: Most models use `createdAt` and `updatedAt`.
 - **Validation**: Enums are used for finite states (e.g., `status`).
+
+## Recent Changes
+- **Language Model**: Added to store top 20 Indian languages for priest profiles.
+- **User Model**: Added `languagesSpoken` field (array of Language refs) for priests.
+- **PriestProfile**: `religiousTradition` is now legacy; languages are stored in User model.

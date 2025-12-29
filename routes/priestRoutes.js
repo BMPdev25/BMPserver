@@ -16,6 +16,7 @@ router.use(priestOnly);
 // Profile routes
 router.put('/profile', priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
+router.get('/profile-completion', priestController.getProfileCompletion);
 
 // Booking routes
 router.get('/bookings', priestController.getBookings);
@@ -33,5 +34,13 @@ router.get('/transactions', priestController.getTransactions);
 router.get('/notifications', priestController.getNotifications);
 router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
 router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
+
+// Document upload route
+const multer = require('multer');
+const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+router.post('/documents', upload.single('document'), priestController.uploadDocument);
 
 module.exports = router;

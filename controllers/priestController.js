@@ -534,3 +534,144 @@ exports.getAvailablePujaris = async (req, res) => {
     res.status(500).json({ message: "Server error fetching pujaris" });
   }
 };
+// Upload priest's verification documents
+exports.uploadDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const { documentType } = req.body;
+    if (!documentType) {
+      return res.status(400).json({ message: "Document type is required" });
+    }
+
+    const priestId = req.user.id;
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+    
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ message: "Invalid file type. Only PDF, JPEG, and PNG are allowed." });
+    }
+
+    const newDocument = {
+      type: documentType,
+      data: req.file.buffer,
+      contentType: req.file.mimetype,
+      fileName: req.file.originalname,
+      status: "pending"
+    };
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    // Remove existing document of same type if exists to avoid duplicates/stale data
+    const existingDocIndex = profile.verificationDocuments.findIndex(d => d.type === documentType);
+    if (existingDocIndex !== -1) {
+       profile.verificationDocuments[existingDocIndex] = newDocument;
+    } else {
+       profile.verificationDocuments.push(newDocument);
+    }
+
+    await profile.save();
+
+    res.status(200).json({ 
+      message: "Document uploaded successfully", 
+      documentId: profile.verificationDocuments[profile.verificationDocuments.length - 1]._id 
+    });
+
+  } catch (error) {
+    console.error("Upload document error:", error);
+    res.status(500).json({ message: "Server error while uploading document" });
+  }
+};
+
+// Get profile completion percentage
+exports.getProfileCompletion = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('languagesSpoken');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    let priestProfile = await PriestProfile.findOne({ userId });
+
+    // If profile doesn't exist, create a basic one
+    if (!priestProfile) {
+      priestProfile = new PriestProfile({
+        userId,
+        experience: 0,
+        services: [],
+        location: {
+          type: 'Point',
+          coordinates: [0, 0]
+        },
+        verificationDocuments: [],
+        templesAffiliated: []
+      });
+      await priestProfile.save();
+    }
+
+    // Define completion criteria with weights
+    const criteria = {
+      basicInfo: !!(user.name && user.email && user.phone),
+      languages: user.languagesSpoken && user.languagesSpoken.length > 0,
+      profilePicture: !!priestProfile.profilePicture,
+      description: !!priestProfile.description && priestProfile.description.length > 20,
+      experience: priestProfile.experience !== undefined && priestProfile.experience >= 0,
+      services: priestProfile.services && priestProfile.services.length > 0,
+      location: priestProfile.location && priestProfile.location.coordinates && 
+                priestProfile.location.coordinates[0] !== 0 && 
+                priestProfile.location.coordinates[1] !== 0,
+      documents: priestProfile.verificationDocuments && priestProfile.verificationDocuments.length > 0,
+    };
+
+    const weights = {
+      basicInfo: 10,
+      languages: 10,
+      profilePicture: 15,
+      description: 10,
+      experience: 10,
+      services: 20,
+      location: 15,
+      documents: 10,
+    };
+
+    let completionPercentage = 0;
+    const missingFields = [];
+    const completedFields = [];
+
+    Object.keys(criteria).forEach(key => {
+      if (criteria[key]) {
+        completionPercentage += weights[key];
+        completedFields.push(key);
+      } else {
+        missingFields.push(key);
+      }
+    });
+
+    // Check verification status
+    const hasVerifiedDocs = priestProfile.verificationDocuments?.some(
+      doc => doc.status === 'verified'
+    );
+
+    const hasPendingDocs = priestProfile.verificationDocuments?.some(
+      doc => doc.status === 'pending'
+    );
+
+    res.status(200).json({
+      completionPercentage,
+      missingFields,
+      completedFields,
+      isVerified: hasVerifiedDocs,
+      hasPendingVerification: hasPendingDocs,
+      canAcceptRequests: completionPercentage >= 80 && hasVerifiedDocs,
+    });
+  } catch (error) {
+    console.error('Error calculating profile completion:', error);
+    res.status(500).json({ message: 'Server error while calculating profile completion' });
+  }
+};

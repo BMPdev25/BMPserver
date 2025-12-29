@@ -90,6 +90,11 @@ const userSchema = new mongoose.Schema({
       default: false
     }
   }],
+  // Languages spoken (for priests)
+  languagesSpoken: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Language'
+  }]
 });
 
 // Indexes for performance

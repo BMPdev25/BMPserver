@@ -6,8 +6,18 @@ const jwt = require('jsonwebtoken');
 // Register a new user
 exports.register = async (req, res) => {
   try {
-    const { name, email, phone, password, userType, } = req.body;
+    const { name, email, phone, password, userType, languagesSpoken } = req.body;
     console.log('Register request body:', req.body);
+    
+    // Validate languagesSpoken for priests
+    if (userType === 'priest') {
+      if (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0) {
+        return res.status(400).json({
+          message: 'Priests must select at least one language'
+        });
+      }
+    }
+    
     // Check if user exists
     const existingUser = await User.findOne({
       $or: [{ email }, { phone }]
@@ -30,6 +40,7 @@ exports.register = async (req, res) => {
       phone,
       password: hashedPassword,
       userType,
+      ...(userType === 'priest' && languagesSpoken ? { languagesSpoken } : {})
     });
 
     await user.save();
@@ -40,8 +51,7 @@ exports.register = async (req, res) => {
       await PriestProfile.create({
         userId: user._id,
         experience: req.body.experience || 0,
-        religiousTradition: req.body.religiousTradition || '',
-        // ceremonies: req.body.ceremonies || [], // removed
+        // religiousTradition removed - languages now stored in User model
         description: req.body.description || '',
         governmentIdVerified: req.body.governmentIdVerified || false,
         religiousCertificationVerified: req.body.religiousCertificationVerified || false,

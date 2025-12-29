@@ -154,6 +154,23 @@ const priestProfileSchema = new mongoose.Schema({
     }],
   },
 
+  verificationDocuments: [{
+    type: {
+      type: String,
+      enum: ["government_id", "religious_certificate", "other"],
+      required: true
+    },
+    data: Buffer,
+    contentType: String,
+    fileName: String,
+    uploadDate: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "verified", "rejected"],
+      default: "pending"
+    }
+  }],
+
   specializations: [{
     name: String,
     experience: Number,
