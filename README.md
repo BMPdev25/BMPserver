@@ -7,10 +7,25 @@
     npm install
     ```
 
-2.  **Run the server:**
-    ```bash
-    npm run dev
-    ```
+## Running the Server
+
+### Development Mode (Recommended)
+Runs the server with `nodemon`, which automatically restarts when file changes are detected.
+```bash
+npm run dev
+```
+
+### Production Mode
+Runs the server using standard Node.js.
+```bash
+node server.js
+```
+
+### Troubleshooting
+If the server fails to start:
+1. Check if MongoDB is running
+2. Ensure port 5000 is free
+3. Verify `.env` file exists with correct credentials
 
 ## Data Seeding
 

@@ -38,11 +38,59 @@ These tests test the API endpoints by sending real HTTP requests to the running 
         *   `should fail to register priest without languages`: Verifies that priest registration fails with a 400 status if no languages are selected.
         *   `should login an existing user`: Registers a user, then sends a POST to `/api/auth/login` with `identifier` (email/phone) to verify successful login and token generation.
 
+*   **`profileCompletion.test.js`**:
+    *   **Purpose**: Tests the Profile Completion and Profile Auto-creation functionality.
+    *   **Cases**:
+        *   `should auto-create profile and return completion data for new priest`: Verifies that a new priest gets a profile created automatically with completion percentage calculated.
+        *   `should return 401 without authentication`: Ensures endpoint requires authentication.
+        *   `should calculate correct completion percentage`: Tests that completion percentage increases as profile fields are filled.
+        *   `should identify missing fields correctly`: Verifies that the API correctly identifies which profile fields are missing.
+        *   `should return canAcceptRequests false for incomplete profile`: Ensures incomplete profiles cannot accept requests.
+        *   `should auto-create profile for new priest` (getProfile): Tests that the profile endpoint creates a profile if it doesn't exist.
+        *   `should return existing profile if it exists`: Verifies that existing profiles are returned correctly.
+        *   `should return 401 without authentication` (getProfile): Ensures profile endpoint requires authentication.
+
 ## Recent Test Updates
 - ✅ Updated auth tests to use `userType` instead of `role`
 - ✅ Added test for priest registration with language selection
 - ✅ Added validation test for priest registration without languages
 - ✅ Updated login test to use `identifier` field
+- ✅ Added comprehensive profile completion tests
+- ✅ Added profile auto-creation tests
 
 ## Test Data
 Tests use the MongoDB Memory Server, which provides an isolated in-memory database. The Language collection is seeded with test data during the test setup using the `beforeAll` hook.
+
+## Running Specific Tests
+
+Run all tests:
+```bash
+npm test
+```
+
+Run specific test file:
+```bash
+npm test -- tests/integration/auth.test.js
+npm test -- tests/integration/profileCompletion.test.js
+```
+
+Run tests in watch mode:
+```bash
+npm test -- --watch
+```
+
+## Test Coverage
+
+Current test coverage includes:
+- **Authentication**: User registration (devotee & priest), login, language validation
+- **Profile Management**: Profile creation, profile completion calculation, auto-creation
+- **Data Validation**: Schema validation, required fields, data types
+
+## Future Test Additions
+
+Planned test coverage:
+- Booking creation and management
+- Earnings calculation
+- Notification system
+- Document upload and verification
+- Service/ceremony management

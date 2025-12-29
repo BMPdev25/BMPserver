@@ -62,15 +62,30 @@ exports.updateProfile = async (req, res) => {
 // Get priest profile
 exports.getProfile = async (req, res) => {
   try {
-    const profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
+    let profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
 
+    // If profile doesn't exist, create a basic one
     if (!profile) {
-      return res.status(404).json({ message: "Profile not found" });
+      profile = new PriestProfile({
+        userId: req.user.id,
+        experience: 0,
+        services: [],
+        location: {
+          type: 'Point',
+          coordinates: [0, 0]
+        },
+        verificationDocuments: [],
+        templesAffiliated: []
+      });
+      await profile.save();
+      
+      // Populate after save
+      profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
     }
 
     res.status(200).json(profile);
   } catch (error) {
-    console.error("Get priest profile error:", error);
+    console.error("❌ Get priest profile error:", error);
     res.status(500).json({
       message: "Server error while fetching priest profile",
     });
@@ -114,7 +129,6 @@ exports.getBookings = async (req, res) => {
 // Get priest's earnings based on completed bookings
 exports.getEarnings = async (req, res) => {
   try {
-    console.log(req.query);
     const { priestId } = req.query;
     const { period } = req.query;
 
@@ -457,8 +471,6 @@ exports.updateBookingStatus = async (req, res) => {
           relatedId: booking._id,
         });
       }
-
-      console.log("Notification created for status update:", status);
     } catch (notificationError) {
       console.error(
         "Error creating notification for status update:",

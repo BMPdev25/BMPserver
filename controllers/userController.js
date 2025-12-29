@@ -70,13 +70,15 @@ const getProfile = async (req, res) => {
 // Update user profile
 const updateProfile = async (req, res) => {
   try {
-    const { name, phone, privacy, notifications } = req.body;
+    const { name, email, phone, languagesSpoken, privacy, notifications } = req.body;
     const userId = req.user.id;
 
     const updateData = {};
     
     if (name) updateData.name = name.trim();
+    if (email) updateData.email = email.trim();
     if (phone) updateData.phone = phone.trim();
+    if (languagesSpoken) updateData.languagesSpoken = languagesSpoken;
     if (privacy) updateData.privacy = { ...privacy };
     if (notifications) updateData.notifications = { ...notifications };
 

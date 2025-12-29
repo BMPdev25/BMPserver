@@ -7,14 +7,10 @@ const Notification = require("../models/notification");
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res) => {
   try {
-    console.log("Getting all priests...");
-
     // Get all priest profiles
     const allPriests = await PriestProfile.find({})
       .populate("userId", "name email phone location")
       .exec();
-
-    console.log("Total priests in database:", allPriests.length);
 
     res.status(200).json({
       total: allPriests.length,
@@ -158,7 +154,6 @@ exports.getPriestDetails = async (req, res) => {
       .exec();
 
     if (priest) {
-      console.log("Found actual priest:", priest.userId?.name);
       
       // Map services to ceremonies format expected by frontend
       const mappedCeremonies = priest.services?.map(service => ({
@@ -193,7 +188,6 @@ exports.getPriestDetails = async (req, res) => {
     }
 
     // Fallback demo data if priest not found in database
-    console.log("Priest not found in database, using demo data");
     const demoData = {
       _id: priestId,
       name: priestId.includes("mahantesh") ? "Mahantesh" : "Dr. Rajesh Sharma",
@@ -326,7 +320,7 @@ exports.createBooking = async (req, res) => {
         priceListKeys: Array.from(priestProfile.priceList.keys()),
       });
     } else {
-      console.log("PriceList not found, using frontend price:", finalBasePrice);
+      // Use frontend price as fallback
     }
 
     const bookingData = {
@@ -338,12 +332,8 @@ exports.createBooking = async (req, res) => {
       basePrice: finalBasePrice, // Use the calculated price
     };
 
-    console.log("Final booking data to save:", bookingData);
-
     const booking = new Booking(bookingData);
     const savedBooking = await booking.save();
-
-    console.log("Booking saved successfully:", savedBooking._id);
 
     // Get devotee details for notification
     const devotee = await User.findById(devoteeId).select("name");
@@ -362,7 +352,6 @@ exports.createBooking = async (req, res) => {
         type: "booking",
         relatedId: savedBooking._id,
       });
-      console.log("Notification created for priest:", userPriestId);
     } catch (notificationError) {
       console.error("Error creating notification:", notificationError);
       // Don't fail the booking if notification fails

@@ -59,8 +59,8 @@ app.use((req, res, next) => {
 
 // Register API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/priests', priestRoutes);
-app.use('/api/devotees', devoteeRoutes);
+app.use('/api/priest', priestRoutes);  // Changed from /api/priests to /api/priest
+app.use('/api/devotee', devoteeRoutes);  // Changed from /api/devotees to /api/devotee
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);

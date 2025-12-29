@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 exports.register = async (req, res) => {
   try {
     const { name, email, phone, password, userType, languagesSpoken } = req.body;
-    console.log('Register request body:', req.body);
     
     // Validate languagesSpoken for priests
     if (userType === 'priest') {
@@ -22,7 +21,6 @@ exports.register = async (req, res) => {
     const existingUser = await User.findOne({
       $or: [{ email }, { phone }]
     });
-    console.log('Existing user check:', existingUser);
     if (existingUser) {
       return res.status(400).json({
         message: 'User already exists with this email or phone'
@@ -144,7 +142,6 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
-    console.log(error)
     res.status(500).json({ message: 'Server error during login' });
   }
 };
