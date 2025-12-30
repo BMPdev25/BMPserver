@@ -20,6 +20,9 @@ exports.updateProfile = async (req, res) => {
       location
     } = req.body;
 
+    console.log('DEBUG: Priest Update Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
+    if (services) console.log('DEBUG: Received services:', JSON.stringify(services, null, 2)); // DEBUG LOG
+
     let profile = await PriestProfile.findOne({ userId: req.user.id });
 
     const updateData = {
@@ -62,7 +65,12 @@ exports.updateProfile = async (req, res) => {
 // Get priest profile
 exports.getProfile = async (req, res) => {
   try {
-    let profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
+    let profile = await PriestProfile.findOne({ userId: req.user.id })
+      .populate({
+        path: 'userId',
+        populate: { path: 'languagesSpoken' }
+      })
+      .populate("services.ceremonyId", "name duration");
 
     // If profile doesn't exist, create a basic one
     if (!profile) {
@@ -80,7 +88,12 @@ exports.getProfile = async (req, res) => {
       await profile.save();
       
       // Populate after save
-      profile = await PriestProfile.findOne({ userId: req.user.id }).populate("services.ceremonyId", "name duration");
+      profile = await PriestProfile.findOne({ userId: req.user.id })
+        .populate({
+          path: 'userId',
+          populate: { path: 'languagesSpoken' }
+        })
+        .populate("services.ceremonyId", "name duration");
     }
 
     res.status(200).json(profile);
@@ -578,12 +591,39 @@ exports.uploadDocument = async (req, res) => {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    // Remove existing document of same type if exists to avoid duplicates/stale data
-    const existingDocIndex = profile.verificationDocuments.findIndex(d => d.type === documentType);
-    if (existingDocIndex !== -1) {
-       profile.verificationDocuments[existingDocIndex] = newDocument;
+    // Handle Profile Picture specially
+    if (documentType === 'profile_picture') {
+      // In a real app, 'newDocument.data' (buffer) would be uploaded to S3/Cloudinary and we'd save the URL.
+      // For this MVP/Monolith, we might be storing base64 or assuming a file path if using disk storage.
+      // REQUIRED: Check how 'req.file' is handled. It's 'req.file.buffer'.
+      // If we store buffer in DB (bad practice but maybe what's happening for docs?), we need schema support.
+      // Schema 'profilePicture' is type String.
+      // If we can't store buffer, we can't save it.
+      // Let's check how 'verificationDocuments' stores data.
+      // VerificationDocument schema likely has 'data' field?
+      
+      // Let's assume we return a success with a mock URL or we convert buffer to Base64 data string if small?
+      // Or we should save to disk?
+      // Since I can't easily add S3 now, I will assume we mock it OR store as Data URI if small.
+      // Warning: 2048 limit in SecureStore doesn't apply here (Mongo).
+      
+      // Better approach for now:
+      // If the User Schema or PriestProfile Schema expects a String, we must provide a String.
+      // I'll assume we can use a generated path or base64.
+      // Let's use a Data URI for simplicity in this MVP environment if files are small.
+      
+      const b64 = req.file.buffer.toString('base64');
+      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+      profile.profilePicture = dataURI;
+      
     } else {
-       profile.verificationDocuments.push(newDocument);
+        // Remove existing document of same type if exists to avoid duplicates/stale data
+        const existingDocIndex = profile.verificationDocuments.findIndex(d => d.type === documentType);
+        if (existingDocIndex !== -1) {
+           profile.verificationDocuments[existingDocIndex] = newDocument;
+        } else {
+           profile.verificationDocuments.push(newDocument);
+        }
     }
 
     await profile.save();

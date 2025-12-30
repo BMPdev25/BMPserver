@@ -44,7 +44,8 @@ const upload = multer({
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id)
-      .select('-password -security.refreshTokens');
+      .select('-password -security.refreshTokens')
+      .populate('languagesSpoken');
 
     if (!user) {
       return res.status(404).json({
@@ -86,7 +87,9 @@ const updateProfile = async (req, res) => {
       userId,
       updateData,
       { new: true, runValidators: true }
-    ).select('-password -security.refreshTokens');
+    )
+      .select('-password -security.refreshTokens')
+      .populate('languagesSpoken');
 
     if (!user) {
       return res.status(404).json({

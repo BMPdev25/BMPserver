@@ -43,6 +43,11 @@ exports.register = async (req, res) => {
 
     await user.save();
 
+    // Populate languagesSpoken before returning
+    const populatedUser = await User.findById(user._id)
+      .select('-password -security.refreshTokens')
+      .populate('languagesSpoken');
+
     // Store priest or devotee profile
     if (userType === 'priest') {
       const PriestProfile = require('../models/priestProfile');
@@ -111,7 +116,7 @@ exports.login = async (req, res) => {
     // Find user by phone OR email
     const user = await User.findOne({
       $or: [{ phone: identifier }, { email: identifier }]
-    });
+    }).populate('languagesSpoken');
 
     if (!user) {
       return res.status(401).json({ message: 'No user found' });
