@@ -70,7 +70,7 @@ exports.getProfile = async (req, res) => {
         path: 'userId',
         populate: { path: 'languagesSpoken' }
       })
-      .populate("services.ceremonyId", "name duration");
+      .populate("services.ceremonyId", "name duration images description requirements");
 
     // If profile doesn't exist, create a basic one
     if (!profile) {
@@ -93,7 +93,7 @@ exports.getProfile = async (req, res) => {
           path: 'userId',
           populate: { path: 'languagesSpoken' }
         })
-        .populate("services.ceremonyId", "name duration");
+        .populate("services.ceremonyId", "name duration images description requirements");
     }
 
     res.status(200).json(profile);
