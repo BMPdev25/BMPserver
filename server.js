@@ -70,8 +70,8 @@ app.use('/api/languages', languageRoutes);
 
 // Connect to MongoDB and Start Server only if run directly
 if (require.main === module) {
-  mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB connected'))
+  mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' })
+    .then(() => console.log('MongoDB connected to bmp'))
     .catch(err => console.error('MongoDB connection error:', err));
 
   const PORT = process.env.PORT || 5000;
