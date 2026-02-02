@@ -4,9 +4,6 @@ const Rating = require('../models/rating');
 // Submit a new rating
 exports.submitRating = async (req, res) => {
   try {
-    console.log('Rating submission request received:', req.body);
-    console.log('Authenticated user:', req.user);
-    
     const {
       bookingId,
       priestId,
@@ -23,7 +20,6 @@ exports.submitRating = async (req, res) => {
 
     // Validate required fields
     if (!bookingId || !priestId || !rating || !categories || !ceremonyType || !ceremonyDate) {
-      console.log('Validation failed: Missing required fields');
       return res.status(400).json({
         success: false,
         message: 'Missing required fields'

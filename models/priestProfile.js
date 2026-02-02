@@ -1,59 +1,71 @@
-// models/priestProfile.js
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
+
+const PriestServiceSchema = new mongoose.Schema({
+  ceremonyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Ceremony",
+    required: true,
+  },
+  price: {
+    type: Number,
+    required: true,
+  },
+  durationMinutes: {
+    type: Number,
+    required: true,
+  },
+  // Optional seasonal overrides (optional but future-ready)
+  seasonalPrice: {
+    type: Number,
+  },
+}, { _id: false });
 
 const priestProfileSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: "User",
     required: true,
     unique: true,
   },
-  experience: {
+
+  experience: Number,
+  religiousTradition: String,
+  description: String,
+  // ceremonies: [String], // Removed legacy field. Use services instead.
+
+  // NEW: Link ceremonies with price + duration
+  services: [PriestServiceSchema],
+
+  // NEW: GeoJSON location for radius-based search
+  location: {
+    type: {
+      type: String,
+      enum: ["Point"],
+      default: "Point",
+    },
+    coordinates: {
+      type: [Number], // [longitude, latitude]
+      default: [0, 0],
+    },
+  },
+
+  serviceRadiusKm: {
     type: Number,
-    required: true,
+    default: 10
   },
-  religiousTradition: {
-    type: String,
-    required: true,
-  },
+
   templesAffiliated: [{
-    name: {
-      type: String,
-      required: true,
-    },
-    address: {
-      type: String,
-      required: true,
-    }
+    name: String,
+    address: String
   }],
-  ceremonies: [{
-    type: String,
-    required: true,
-  }],
-  description: {
-    type: String,
-  },
-  governmentIdVerified: {
-    type: Boolean,
-    default: false,
-  },
-  religiousCertificationVerified: {
-    type: Boolean,
-    default: false,
-  },
-  profilePicture: {
-    type: String,
-  },
+
+  profilePicture: String,
+
   ratings: {
-    average: {
-      type: Number,
-      default: 0,
-    },
-    count: {
-      type: Number,
-      default: 0,
-    },
+    average: { type: Number, default: 0 },
+    count: { type: Number, default: 0 },
   },
+
   availability: {
     type: Map,
     of: [{
@@ -62,139 +74,77 @@ const priestProfileSchema = new mongoose.Schema({
       endTime: String,
     }],
   },
+
+  // Travel & service area management
+  serviceAreas: [{
+    city: String,
+    state: String,
+    radius: Number,
+    travelCharges: Number,
+  }],
+
   priceList: {
     type: Map,
     of: Number,
   },
-  ceremonyCount: {
-    type: Number,
-    default: 0,
-  },
-  isVerified: {
-    type: Boolean,
-    default: true,
-  },
-  // Real-time Availability System
+
+  ceremonyCount: { type: Number, default: 0 },
+  isVerified: { type: Boolean, default: true },
+
+  // Real-time status
   currentAvailability: {
-    status: {
-      type: String,
-      enum: ['available', 'busy', 'offline'],
-      default: 'offline',
-    },
-    lastUpdated: {
-      type: Date,
-      default: Date.now,
-    },
-    autoToggle: {
-      type: Boolean,
-      default: true,
-    },
+    status: { type: String, enum: ["available", "busy", "offline"], default: "offline" },
+    lastUpdated: { type: Date, default: Date.now },
+    autoToggle: { type: Boolean, default: true },
   },
-  // Schedule Management
+
+  // Work schedule
   schedule: {
     workingHours: {
       type: Map,
       of: {
-        isWorking: {
-          type: Boolean,
-          default: true,
-        },
-        startTime: {
-          type: String,
-          default: '09:00',
-        },
-        endTime: {
-          type: String,
-          default: '18:00',
-        },
+        isWorking: Boolean,
+        startTime: String,
+        endTime: String,
         breakTime: {
-          start: {
-            type: String,
-            default: '13:00',
-          },
-          end: {
-            type: String,
-            default: '14:00',
-          },
+          start: String,
+          end: String,
         },
       },
     },
     blockedDates: [{
-      date: {
-        type: Date,
-        required: true,
-      },
-      reason: {
-        type: String,
-      },
+      date: Date,
+      reason: String,
     }],
     recurringUnavailability: [{
-      dayOfWeek: {
-        type: Number, // 0-6 (Sunday-Saturday)
-        required: true,
-      },
+      dayOfWeek: Number,
       startTime: String,
       endTime: String,
       reason: String,
     }],
   },
-  // Earnings Dashboard
+
+  // Earnings
   earnings: {
-    totalEarnings: {
-      type: Number,
-      default: 0,
-    },
-    thisMonth: {
-      type: Number,
-      default: 0,
-    },
-    lastMonth: {
-      type: Number,
-      default: 0,
-    },
-    pendingPayments: {
-      type: Number,
-      default: 0,
-    },
+    totalEarnings: { type: Number, default: 0 },
+    thisMonth: { type: Number, default: 0 },
+    lastMonth: { type: Number, default: 0 },
+    pendingPayments: { type: Number, default: 0 },
     monthlyEarnings: [{
-      month: {
-        type: Number,
-        required: true,
-      },
-      year: {
-        type: Number,
-        required: true,
-      },
-      amount: {
-        type: Number,
-        default: 0,
-      },
-      completedCeremonies: {
-        type: Number,
-        default: 0,
-      },
+      month: Number,
+      year: Number,
+      amount: Number,
+      completedCeremonies: Number,
     }],
-    lastPayoutDate: {
-      type: Date,
-    },
-    nextPayoutDate: {
-      type: Date,
-    },
+    lastPayoutDate: Date,
+    nextPayoutDate: Date,
   },
-  // Performance Analytics
+
+  // Analytics
   analytics: {
-    completionRate: {
-      type: Number,
-      default: 100,
-    },
-    responseTime: {
-      type: Number, // in hours
-      default: 2,
-    },
-    repeatCustomers: {
-      type: Number,
-      default: 0,
-    },
+    completionRate: { type: Number, default: 100 },
+    responseTime: { type: Number, default: 2 },
+    repeatCustomers: { type: Number, default: 0 },
     monthlyTrends: [{
       month: Number,
       year: Number,
@@ -203,44 +153,37 @@ const priestProfileSchema = new mongoose.Schema({
       averageRating: Number,
     }],
   },
-  // Enhanced Location Support
-  serviceAreas: [{
-    city: {
+
+  verificationDocuments: [{
+    type: {
       type: String,
-      required: true,
+      enum: ["government_id", "religious_certificate", "other"],
+      required: true
     },
-    state: {
+    data: Buffer,
+    contentType: String,
+    fileName: String,
+    uploadDate: { type: Date, default: Date.now },
+    status: {
       type: String,
-      required: true,
-    },
-    radius: {
-      type: Number, // in kilometers
-      default: 25,
-    },
-    travelCharges: {
-      type: Number,
-      default: 0,
-    },
+      enum: ["pending", "verified", "rejected"],
+      default: "pending"
+    }
   }],
-  // Specializations and Certifications
+
   specializations: [{
-    name: {
-      type: String,
-      required: true,
-    },
-    experience: {
-      type: Number, // in years
-      required: true,
-    },
-    certification: {
-      type: String,
-    },
+    name: String,
+    experience: Number,
+    certification: String,
     verificationStatus: {
       type: String,
-      enum: ['pending', 'verified', 'rejected'],
-      default: 'pending',
+      enum: ["pending", "verified", "rejected"],
+      default: "pending",
     },
   }],
 });
 
-module.exports = mongoose.model('PriestProfile', priestProfileSchema);
+// Very important: For radius search
+priestProfileSchema.index({ location: "2dsphere" });
+
+module.exports = mongoose.model("PriestProfile", priestProfileSchema);

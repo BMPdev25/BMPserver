@@ -16,6 +16,8 @@ const ratingRoutes = require('./routes/ratingRoutes');
 const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const ceremonyRoutes = require("./routes/ceremonyRoutes");
+const languageRoutes = require('./routes/languageRoutes');
 
 // Load environment variables
 dotenv.config();
@@ -46,93 +48,39 @@ app.use(cors({
   credentials: true,
 }));
 
+// Serve static files
+app.use('/public', express.static('public'));
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
 });
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Server is running', 
-    timestamp: new Date().toISOString() 
-  });
-});
-
-// Routes
+// Register API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/priest', priestRoutes);
-app.use('/api/devotee', devoteeRoutes);
+app.use('/api/priest', priestRoutes);  // Changed from /api/priests to /api/priest
+app.use('/api/devotee', devoteeRoutes);  // Changed from /api/devotees to /api/devotee
 app.use('/api/ratings', ratingRoutes);
-app.use('/api/user', userRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/ceremonies', ceremonyRoutes);
+app.use('/api/languages', languageRoutes);
 
-// Socket.IO real-time features
-io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-  
-  // Join user to their personal room for notifications
-  socket.on('join', (userId) => {
-    socket.join(`user_${userId}`);
-    console.log(`User ${userId} joined their room`);
-  });
-  
-  // Handle priest availability updates
-  socket.on('priest_availability_update', (data) => {
-    const { priestId, status } = data;
-    socket.broadcast.emit('priest_availability_changed', { priestId, status });
-  });
-  
-  // Handle booking status updates
-  socket.on('booking_status_update', (data) => {
-    const { bookingId, status, devoteeId, priestId } = data;
-    
-    // Notify both devotee and priest
-    io.to(`user_${devoteeId}`).emit('booking_updated', { bookingId, status });
-    io.to(`user_${priestId}`).emit('booking_updated', { bookingId, status });
-  });
-  
-  // Handle real-time earnings updates
-  socket.on('earnings_update', (data) => {
-    const { priestId, amount, bookingId } = data;
-    io.to(`user_${priestId}`).emit('earnings_updated', { amount, bookingId });
-  });
-  
-  // Handle payment confirmations
-  socket.on('payment_confirmed', (data) => {
-    const { bookingId, devoteeId, priestId } = data;
-    io.to(`user_${devoteeId}`).emit('payment_success', { bookingId });
-    io.to(`user_${priestId}`).emit('payment_received', { bookingId });
-  });
-  
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
-});
+// Connect to MongoDB and Start Server only if run directly
+if (require.main === module) {
+  mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' })
+    .then(() => console.log('MongoDB connected to bmp'))
+    .catch(err => console.error('MongoDB connection error:', err));
 
-// Make io available to other modules
-app.set('socketio', io);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    message: 'Something went wrong on the server'
+  const PORT = process.env.PORT || 5000;
+  // const HOST = '0.0.0.0'; 
+  server.listen(PORT, () => {
+    console.log(`Server running on localhost:${PORT}`);
+    console.log('Socket.IO enabled for real-time features');
   });
-});
+}
 
-// Start server
-const PORT = process.env.PORT || 5000;
-const HOST = '0.0.0.0'; // Listen on all network interfaces for emulator access
-server.listen(PORT, () => {
-  console.log(`Server running on localhost:${PORT}`);
-  console.log('Socket.IO enabled for real-time features');
-});
+module.exports = { app, server };
+
