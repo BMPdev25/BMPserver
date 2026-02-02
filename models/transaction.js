@@ -10,6 +10,9 @@ const transactionSchema = new mongoose.Schema({
   bookingId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Booking',
+    required: function() {
+      return this.type === 'earnings';
+    },
   },
   amount: {
     type: Number,

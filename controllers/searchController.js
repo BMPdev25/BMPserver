@@ -69,7 +69,7 @@ const universalSearch = async (req, res) => {
         .populate({
           path: 'priestProfile',
           model: 'PriestProfile',
-          select: 'experience religiousTradition ceremonies description ratings priceList currentAvailability serviceAreas',
+          select: 'experience religiousTradition description ratings priceList currentAvailability serviceAreas',
           match: religiousTradition ? { religiousTradition: { $regex: religiousTradition, $options: 'i' } } : {}
         })
         .skip(type === 'all' ? 0 : skip)
@@ -115,7 +115,8 @@ const universalSearch = async (req, res) => {
         experience: priest.priestProfile.experience,
         religiousTradition: priest.priestProfile.religiousTradition,
         rating: priest.priestProfile.ratings,
-        ceremonies: priest.priestProfile.ceremonies,
+        rating: priest.priestProfile.ratings,
+        // ceremonies: priest.priestProfile.ceremonies, // removed
         description: priest.priestProfile.description,
         priceRange: {
           min: Math.min(...Array.from(priest.priestProfile.priceList.values())),

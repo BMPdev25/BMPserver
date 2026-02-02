@@ -23,12 +23,8 @@ const devoteeProfileSchema = new mongoose.Schema({
       sms: { type: Boolean, default: false }
     }
   },
-  history: [{
-    bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
-    ceremony: String,
-    date: Date,
-    status: String
-  }],
+  // History is removed to avoid duplication with Booking collection
+  // Query bookings by devoteeId instead
   isVerified: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

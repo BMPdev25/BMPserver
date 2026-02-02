@@ -22,7 +22,12 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: function() { return !this.firebaseUid; } // Password not required if firebaseUid exists
+  },
+  firebaseUid: {
+    type: String,
+    sparse: true,
+    unique: true
   },
   userType: {
     type: String,
@@ -67,6 +72,29 @@ const userSchema = new mongoose.Schema({
       reminders: { type: Boolean, default: true }
     }
   },
+  // Address Management
+  addresses: [{
+    type: {
+      type: String,
+      enum: ['Home', 'Work', 'Other'],
+      default: 'Home'
+    },
+    street: String,
+    area: String,
+    city: String,
+    state: String,
+    zip: String,
+    landmark: String,
+    isDefault: {
+      type: Boolean,
+      default: false
+    }
+  }],
+  // Languages spoken (for priests)
+  languagesSpoken: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Language'
+  }]
 });
 
 // Indexes for performance

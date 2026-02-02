@@ -11,76 +11,94 @@ exports.updateProfile = async (req, res) => {
       experience,
       religiousTradition,
       templesAffiliated,
-      ceremonies,
+      // ceremonies, // removed
       description,
       profilePicture,
       priceList,
       availability,
+      services,
+      location
     } = req.body;
 
-    // Find existing profile
+    console.log('DEBUG: Priest Update Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
+    if (services) console.log('DEBUG: Received services:', JSON.stringify(services, null, 2)); // DEBUG LOG
+
     let profile = await PriestProfile.findOne({ userId: req.user.id });
 
     const updateData = {
       experience,
       religiousTradition,
       templesAffiliated,
-      ceremonies,
+      // ceremonies, // removed
       description,
       profilePicture,
     };
 
-    // Only update priceList if provided
-    if (priceList) {
-      updateData.priceList = priceList;
-    }
-
-    // Only update availability if provided
-    if (availability) {
-      updateData.availability = availability;
-    }
+    if (priceList) updateData.priceList = priceList;
+    if (availability) updateData.availability = availability;
+    if (services) updateData.services = services;
+    if (location) updateData.location = location;
 
     if (profile) {
-      // Update existing profile
       profile = await PriestProfile.findOneAndUpdate(
         { userId: req.user.id },
         updateData,
         { new: true }
       );
     } else {
-      // Create new profile
       profile = new PriestProfile({
         userId: req.user.id,
         ...updateData,
       });
-
       await profile.save();
-
-      // Update user's profileCompleted status
       await User.findByIdAndUpdate(req.user.id, { profileCompleted: true });
     }
 
     res.status(200).json(profile);
   } catch (error) {
     console.error("Update priest profile error:", error);
-    res.status(500).json({
-      message: "Server error while updating priest profile",
-    });
+    res.status(500).json({ message: "Server error while updating priest profile" });
   }
 };
+
 
 // Get priest profile
 exports.getProfile = async (req, res) => {
   try {
-    const profile = await PriestProfile.findOne({ userId: req.user.id });
+    let profile = await PriestProfile.findOne({ userId: req.user.id })
+      .populate({
+        path: 'userId',
+        populate: { path: 'languagesSpoken' }
+      })
+      .populate("services.ceremonyId", "name duration images description requirements");
 
+    // If profile doesn't exist, create a basic one
     if (!profile) {
-      return res.status(404).json({ message: "Profile not found" });
+      profile = new PriestProfile({
+        userId: req.user.id,
+        experience: 0,
+        services: [],
+        location: {
+          type: 'Point',
+          coordinates: [0, 0]
+        },
+        verificationDocuments: [],
+        templesAffiliated: []
+      });
+      await profile.save();
+      
+      // Populate after save
+      profile = await PriestProfile.findOne({ userId: req.user.id })
+        .populate({
+          path: 'userId',
+          populate: { path: 'languagesSpoken' }
+        })
+        .populate("services.ceremonyId", "name duration images description requirements");
     }
 
     res.status(200).json(profile);
   } catch (error) {
-    console.error("Get priest profile error:", error);
+    console.error("❌ Get priest profile error:", error);
     res.status(500).json({
       message: "Server error while fetching priest profile",
     });
@@ -90,20 +108,28 @@ exports.getProfile = async (req, res) => {
 // Get priest's bookings
 exports.getBookings = async (req, res) => {
   try {
-    console.log("in priest get bookings", req.query);
-    const category = req.query.status;
-    const query = { priestId: req.query.priestId };
+    const { status } = req.query;
+    const query = { priestId: req.user.id };
 
-    // Add status filter if provided
-    if (category) {
-      query.category = category;
+    // Basic status filtering from DB if it matches a DB status
+    if (status && ['confirmed', 'pending', 'cancelled', 'completed'].includes(status)) {
+      query.status = status;
     }
 
-    console.log(query);
-    const bookings = await Booking.find(query)
+    let bookings = await Booking.find(query)
       .populate("devoteeId", "name email phone")
-      .sort({ date: -1 }); // Most recent first
-    console.log("bookings:", bookings);
+      .sort({ date: 1 }); // Ascending for upcoming
+
+    // Advanced filtering for virtual categories
+    if (status === 'upcoming') {
+      const now = new Date();
+      bookings = bookings.filter(b => b.status !== 'completed' && b.status !== 'cancelled' && new Date(b.date) >= now);
+    } else if (status === 'today') {
+      const now = new Date();
+      const todayString = now.toDateString();
+      bookings = bookings.filter(b => new Date(b.date).toDateString() === todayString);
+    }
+
     res.status(200).json(bookings);
   } catch (error) {
     console.error("Get bookings error:", error);
@@ -116,7 +142,6 @@ exports.getBookings = async (req, res) => {
 // Get priest's earnings based on completed bookings
 exports.getEarnings = async (req, res) => {
   try {
-    console.log(req.query);
     const { priestId } = req.query;
     const { period } = req.query;
 
@@ -459,8 +484,6 @@ exports.updateBookingStatus = async (req, res) => {
           relatedId: booking._id,
         });
       }
-
-      console.log("Notification created for status update:", status);
     } catch (notificationError) {
       console.error(
         "Error creating notification for status update:",
@@ -478,5 +501,229 @@ exports.updateBookingStatus = async (req, res) => {
     res.status(500).json({
       message: "Server error while updating booking status",
     });
+  }
+};
+
+// Get pujaris available for a specific ceremony (with optional radius filter)
+exports.getAvailablePujaris = async (req, res) => {
+  try {
+    const { ceremonyId, lat, lng, radius = 10 } = req.query;
+
+    if (!ceremonyId) {
+      return res.status(400).json({ message: "ceremonyId is required" });
+    }
+
+    // Build geo filter only if location is provided
+    let geoFilter = {};
+
+    if (lat && lng) {
+      geoFilter = {
+        location: {
+          $near: {
+            $geometry: {
+              type: "Point",
+              coordinates: [parseFloat(lng), parseFloat(lat)],
+            },
+            $maxDistance: parseFloat(radius) * 1000, // km to meters
+          },
+        },
+      };
+    }
+
+    // Find pujaris who offer this puja
+    const pujarisDocs = await PriestProfile.find({
+      ...geoFilter,
+      "services.ceremonyId": ceremonyId,
+      isVerified: true,
+    })
+      .select(
+        "userId name profilePicture religiousTradition ratings languages services location"
+      )
+      .populate("services.ceremonyId", "name requirements durationMinutes")
+      .populate("userId", "name phone");
+
+    const pujaris = pujarisDocs.map(p => {
+        const doc = p.toObject();
+        return {
+            ...doc,
+            name: doc.userId?.name || "Unknown Priest",
+            phone: doc.userId?.phone,
+            rating: doc.ratings, // Map schema 'ratings' to frontend 'rating'
+            // userId object might be needed for ID, but we flat mapped name
+        };
+    });
+
+    return res.json({ pujaris });
+  } catch (error) {
+    console.error("Error fetching available pujaris:", error);
+    res.status(500).json({ message: "Server error fetching pujaris" });
+  }
+};
+// Upload priest's verification documents
+exports.uploadDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    const { documentType } = req.body;
+    if (!documentType) {
+      return res.status(400).json({ message: "Document type is required" });
+    }
+
+    const priestId = req.user.id;
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+    
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({ message: "Invalid file type. Only PDF, JPEG, and PNG are allowed." });
+    }
+
+    const newDocument = {
+      type: documentType,
+      data: req.file.buffer,
+      contentType: req.file.mimetype,
+      fileName: req.file.originalname,
+      status: "pending"
+    };
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    // Handle Profile Picture specially
+    if (documentType === 'profile_picture') {
+      // In a real app, 'newDocument.data' (buffer) would be uploaded to S3/Cloudinary and we'd save the URL.
+      // For this MVP/Monolith, we might be storing base64 or assuming a file path if using disk storage.
+      // REQUIRED: Check how 'req.file' is handled. It's 'req.file.buffer'.
+      // If we store buffer in DB (bad practice but maybe what's happening for docs?), we need schema support.
+      // Schema 'profilePicture' is type String.
+      // If we can't store buffer, we can't save it.
+      // Let's check how 'verificationDocuments' stores data.
+      // VerificationDocument schema likely has 'data' field?
+      
+      // Let's assume we return a success with a mock URL or we convert buffer to Base64 data string if small?
+      // Or we should save to disk?
+      // Since I can't easily add S3 now, I will assume we mock it OR store as Data URI if small.
+      // Warning: 2048 limit in SecureStore doesn't apply here (Mongo).
+      
+      // Better approach for now:
+      // If the User Schema or PriestProfile Schema expects a String, we must provide a String.
+      // I'll assume we can use a generated path or base64.
+      // Let's use a Data URI for simplicity in this MVP environment if files are small.
+      
+      const b64 = req.file.buffer.toString('base64');
+      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+      profile.profilePicture = dataURI;
+      
+    } else {
+        // Remove existing document of same type if exists to avoid duplicates/stale data
+        const existingDocIndex = profile.verificationDocuments.findIndex(d => d.type === documentType);
+        if (existingDocIndex !== -1) {
+           profile.verificationDocuments[existingDocIndex] = newDocument;
+        } else {
+           profile.verificationDocuments.push(newDocument);
+        }
+    }
+
+    await profile.save();
+
+    res.status(200).json({ 
+      message: "Document uploaded successfully", 
+      documentId: profile.verificationDocuments[profile.verificationDocuments.length - 1]._id 
+    });
+
+  } catch (error) {
+    console.error("Upload document error:", error);
+    res.status(500).json({ message: "Server error while uploading document" });
+  }
+};
+
+// Get profile completion percentage
+exports.getProfileCompletion = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).populate('languagesSpoken');
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    let priestProfile = await PriestProfile.findOne({ userId });
+
+    // If profile doesn't exist, create a basic one
+    if (!priestProfile) {
+      priestProfile = new PriestProfile({
+        userId,
+        experience: 0,
+        services: [],
+        location: {
+          type: 'Point',
+          coordinates: [0, 0]
+        },
+        verificationDocuments: [],
+        templesAffiliated: []
+      });
+      await priestProfile.save();
+    }
+
+    // Define completion criteria with weights
+    const criteria = {
+      basicInfo: !!(user.name && user.email && user.phone),
+      languages: user.languagesSpoken && user.languagesSpoken.length > 0,
+      profilePicture: !!priestProfile.profilePicture,
+      description: !!priestProfile.description && priestProfile.description.length > 20,
+      experience: priestProfile.experience !== undefined && priestProfile.experience >= 0,
+      services: priestProfile.services && priestProfile.services.length > 0,
+      location: priestProfile.location && priestProfile.location.coordinates && 
+                priestProfile.location.coordinates[0] !== 0 && 
+                priestProfile.location.coordinates[1] !== 0,
+      documents: priestProfile.verificationDocuments && priestProfile.verificationDocuments.length > 0,
+    };
+
+    const weights = {
+      basicInfo: 10,
+      languages: 10,
+      profilePicture: 15,
+      description: 10,
+      experience: 10,
+      services: 20,
+      location: 15,
+      documents: 10,
+    };
+
+    let completionPercentage = 0;
+    const missingFields = [];
+    const completedFields = [];
+
+    Object.keys(criteria).forEach(key => {
+      if (criteria[key]) {
+        completionPercentage += weights[key];
+        completedFields.push(key);
+      } else {
+        missingFields.push(key);
+      }
+    });
+
+    // Check verification status
+    const hasVerifiedDocs = priestProfile.verificationDocuments?.some(
+      doc => doc.status === 'verified'
+    );
+
+    const hasPendingDocs = priestProfile.verificationDocuments?.some(
+      doc => doc.status === 'pending'
+    );
+
+    res.status(200).json({
+      completionPercentage,
+      missingFields,
+      completedFields,
+      isVerified: hasVerifiedDocs,
+      hasPendingVerification: hasPendingDocs,
+      canAcceptRequests: completionPercentage >= 80 && hasVerifiedDocs,
+    });
+  } catch (error) {
+    console.error('Error calculating profile completion:', error);
+    res.status(500).json({ message: 'Server error while calculating profile completion' });
   }
 };

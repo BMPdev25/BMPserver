@@ -228,7 +228,7 @@ const createBooking = async (req, res) => {
       basePrice,
       platformFee: platformFee || 0,
       totalAmount,
-      status: 'confirmed', // No pending status as per requirements
+      status: 'pending', // Default to pending so priest can accept/reject
       paymentDetails: {
         receiptNumber: `BMP_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`
       },

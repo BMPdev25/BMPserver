@@ -3,15 +3,18 @@ const mongoose = require('mongoose');
 
 const ratingSchema = new mongoose.Schema({
   bookingId: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Booking',
     required: true,
   },
   priestId: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true,
   },
   userId: {
-    type: String,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true,
   },
   rating: {

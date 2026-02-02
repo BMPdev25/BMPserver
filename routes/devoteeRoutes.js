@@ -22,4 +22,10 @@ router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifica
 router.put('/notifications/:notificationId/read', protect, devoteeOnly, devoteeController.markNotificationAsRead);
 router.put('/notifications/mark-all-read', protect, devoteeOnly, devoteeController.markAllNotificationsAsRead);
 
+// Address Management
+router.get('/addresses', protect, devoteeController.getAddresses);
+router.post('/addresses', protect, devoteeController.addAddress);
+router.put('/addresses/:addressId', protect, devoteeController.updateAddress);
+router.delete('/addresses/:addressId', protect, devoteeController.deleteAddress);
+
 module.exports = router;
