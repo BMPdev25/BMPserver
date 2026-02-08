@@ -42,5 +42,6 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 router.post('/documents', upload.single('document'), priestController.uploadDocument);
+router.get('/documents/:documentType', priestController.getDocument);
 
 module.exports = router;

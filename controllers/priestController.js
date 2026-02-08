@@ -572,10 +572,19 @@ exports.uploadDocument = async (req, res) => {
     }
 
     const priestId = req.user.id;
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+    
+    // Only allow PDF for verification documents (government_id, religious_certificate)
+    // Profile pictures can still be images
+    const isVerificationDoc = documentType === 'government_id' || documentType === 'religious_certificate';
+    const allowedTypes = isVerificationDoc 
+      ? ["application/pdf"]
+      : ["application/pdf", "image/jpeg", "image/png"];
     
     if (!allowedTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ message: "Invalid file type. Only PDF, JPEG, and PNG are allowed." });
+      const errorMsg = isVerificationDoc 
+        ? "Invalid file type. Only PDF files are allowed for verification documents."
+        : "Invalid file type. Only PDF, JPEG, and PNG are allowed.";
+      return res.status(400).json({ message: errorMsg });
     }
 
     const newDocument = {
@@ -636,6 +645,62 @@ exports.uploadDocument = async (req, res) => {
   } catch (error) {
     console.error("Upload document error:", error);
     res.status(500).json({ message: "Server error while uploading document" });
+  }
+};
+
+// Get priest's verification document (serve as file)
+exports.getDocument = async (req, res) => {
+  try {
+    const { documentType } = req.params;
+    const priestId = req.user.id;
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const document = profile.verificationDocuments.find(d => d.type === documentType);
+    if (!document) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    if (!document.data) {
+      return res.status(404).json({ message: "Document data not found" });
+    }
+
+    // Debug logging
+    console.log("Document data type:", typeof document.data);
+    console.log("Document data constructor:", document.data.constructor?.name);
+    console.log("Document contentType:", document.contentType);
+    console.log("Has buffer property:", !!document.data.buffer);
+    console.log("Is Buffer:", Buffer.isBuffer(document.data));
+
+    // Convert MongoDB Binary to Buffer if needed
+    let bufferData;
+    if (document.data.buffer) {
+      // MongoDB Binary object
+      bufferData = Buffer.from(document.data.buffer);
+    } else if (Buffer.isBuffer(document.data)) {
+      bufferData = document.data;
+    } else {
+      // Try to convert directly
+      bufferData = Buffer.from(document.data);
+    }
+    
+    console.log("Buffer length:", bufferData.length);
+    console.log("First bytes:", bufferData.slice(0, 10).toString('hex'));
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', document.contentType || 'application/pdf');
+    res.setHeader('Content-Length', bufferData.length);
+    res.setHeader('Content-Disposition', `inline; filename="${document.fileName || 'document.pdf'}"`);
+    
+    // Send the buffer
+    res.send(bufferData);
+
+  } catch (error) {
+    console.error("Get document error:", error);
+    res.status(500).json({ message: "Server error while fetching document" });
   }
 };
 
