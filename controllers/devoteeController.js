@@ -3,13 +3,18 @@ const User = require("../models/user");
 const PriestProfile = require("../models/priestProfile");
 const Booking = require("../models/booking");
 const Notification = require("../models/notification");
+const Review = require("../models/review");
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res) => {
   try {
     // Get all priest profiles
     const allPriests = await PriestProfile.find({})
-      .populate("userId", "name email phone location")
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name nativeName" }
+      })
       .exec();
 
     res.status(200).json({
@@ -21,13 +26,12 @@ exports.getAllPriests = async (req, res) => {
         phone: priest.userId?.phone || "",
         experience: priest.experience,
         religiousTradition: priest.religiousTradition,
-        religiousTradition: priest.religiousTradition,
-        // ceremonies: priest.ceremonies, // removed
         isVerified: priest.isVerified,
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
         profilePicture: priest.profilePicture,
         rating: priest.ratings, // Map to singular 'rating'
+        languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
       })),
     });
   } catch (error) {
@@ -78,32 +82,20 @@ exports.searchPriests = async (req, res) => {
 
     // Get priest profiles with user details
     const priests = await PriestProfile.find(filter)
-      .populate("userId", "name email phone location")
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name nativeName" }
+      })
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .exec();
 
-    // console.log('Found priests count:', priests.length);
-    // console.log(priests);
-    // console.log('Sample priest data:', priests[0] ? {
-    //   _id: priests[0]._id,
-    //   userId: priests[0].userId,
-    //   experience: priests[0].experience,
-    //   religiousTradition: priests[0].religiousTradition,
-    //   ceremonies: priests[0].ceremonies,
-    //   isVerified: priests[0].isVerified
-    // } : 'No priests found');
-
     // Filter out priests who are not verified (all priests are verified by default now)
     const verifiedPriests = priests.filter(
       (priest) => priest.isVerified !== false
     );
-
-    // console.log('Verified priests count:', verifiedPriests);
-    // verifiedPriests.map(p=> {
-    //   console.log(p.name)
-    // });
 
     // Format response
     const formattedPriests = verifiedPriests.map((priest) => ({
@@ -113,18 +105,14 @@ exports.searchPriests = async (req, res) => {
       phone: priest.userId?.phone || "",
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      religiousTradition: priest.religiousTradition,
-      // ceremonies: priest.ceremonies, // removed
       profilePicture: priest.profilePicture,
       rating: priest.ratings, // Map to singular 'rating'
       ceremonyCount: priest.ceremonyCount,
       location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
+      languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
     }));
-
-    // console.log('Formatted priests count:', formattedPriests);
-    // console.log('Formatted priests count:', formattedPriests.length);
 
     res.status(200).json({
       priests: formattedPriests,
@@ -149,7 +137,11 @@ exports.getPriestDetails = async (req, res) => {
 
     // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
-      .populate("userId", "name email phone location")
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name nativeName" }
+      })
       .populate("services.ceremonyId", "name") // Populate ceremony details
       .exec();
 
@@ -163,6 +155,26 @@ exports.getPriestDetails = async (req, res) => {
         duration: service.durationMinutes
       })) || [];
 
+      // Format weekly availability
+      // Frontend expects: weeklyAvailability: Record<string, { available: boolean, startTime: string, endTime: string }>
+      // Backend (Map) -> Object
+      const weeklyAvailabilityObj = {};
+      if (priest.availability && priest.availability.weeklySchedule) {
+        // Handle Map or Object
+        const schedule = priest.availability.weeklySchedule instanceof Map 
+          ? Object.fromEntries(priest.availability.weeklySchedule) 
+          : priest.availability.weeklySchedule;
+
+        Object.keys(schedule).forEach(day => {
+          const slots = schedule[day] || [];
+          weeklyAvailabilityObj[day] = {
+            available: slots.length > 0,
+            startTime: slots.length > 0 ? slots[0].split('-')[0] : "09:00",
+            endTime: slots.length > 0 ? slots[0].split('-')[1] : "17:00"
+          };
+        });
+      }
+
       const priestData = {
         _id: priest._id,
         name: priest.userId?.name || "Unknown Priest",
@@ -174,7 +186,14 @@ exports.getPriestDetails = async (req, res) => {
           "Experienced priest specializing in various religious ceremonies.",
         profilePicture: priest.profilePicture || "",
         rating: priest.ratings || { average: 4.5, count: 50 }, // Map to singular 'rating'
-        availability: "available",
+        availability: priest.currentAvailability?.status || "available",
+        
+        // Extended Fields for UI
+        languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
+        certifications: priest.specializations?.map(s => s.certification).filter(Boolean) || [],
+        templeAffiliation: priest.templesAffiliated && priest.templesAffiliated.length > 0 ? priest.templesAffiliated[0] : null,
+        weeklyAvailability: weeklyAvailabilityObj,
+
         priceList: priest.priceList || {
           Wedding: 15000,
           "Grih Pravesh": 8000,
@@ -184,6 +203,7 @@ exports.getPriestDetails = async (req, res) => {
         },
         ceremonyCount: priest.ceremonyCount || 100,
       };
+      
       return res.status(200).json(priestData);
     }
 
@@ -207,6 +227,21 @@ exports.getPriestDetails = async (req, res) => {
         count: 120,
       },
       availability: "available",
+      
+      // Demo Data Extended Fields
+      languages: ["Hindi", "Sanskrit", "English"],
+      certifications: ["Vedic Studies PhD", "Jyotish Visharad"],
+      templeAffiliation: { name: "Kashi Vishwanath Temple", address: "Varanasi, UP" },
+      weeklyAvailability: {
+        monday: { available: true, startTime: "09:00", endTime: "18:00" },
+        tuesday: { available: true, startTime: "09:00", endTime: "18:00" },
+        wednesday: { available: true, startTime: "09:00", endTime: "18:00" },
+        thursday: { available: true, startTime: "09:00", endTime: "18:00" },
+        friday: { available: true, startTime: "09:00", endTime: "18:00" },
+        saturday: { available: true, startTime: "08:00", endTime: "20:00" },
+        sunday: { available: true, startTime: "08:00", endTime: "20:00" },
+      },
+
       priceList: {
         Wedding: 15000,
         "Grih Pravesh": 8000,
@@ -583,5 +618,59 @@ exports.deleteAddress = async (req, res) => {
   } catch (error) {
     console.error("Delete address error:", error);
     res.status(500).json({ message: "Server error deleting address" });
+  }
+};
+
+// --- Actions & Reviews ---
+
+// Get pending actions (e.g., rate bookngs)
+exports.getPendingActions = async (req, res) => {
+  try {
+    const devoteeId = req.user.id;
+    const actions = [];
+
+    // 1. Find completed bookings that haven't been reviewed by this devotee
+    // Find all completed bookings for this devotee
+    const completedBookings = await Booking.find({
+      devoteeId: devoteeId,
+      status: 'completed'
+    })
+    .populate("priestId", "name profilePicture")
+    .populate("ceremonyId", "name") // If ceremony details are needed
+    .sort({ date: -1 })
+    .exec();
+
+    // For each completed booking, check if a review exists
+    for (const booking of completedBookings) {
+      const existingReview = await Review.findOne({
+        bookingId: booking._id,
+        reviewerId: devoteeId
+      });
+
+      if (!existingReview) {
+        actions.push({
+          _id: booking._id,
+          type: 'rate_priest',
+          title: 'Rate your Experience',
+          description: `How was the ${booking.ceremonyType}?`,
+          booking: {
+            _id: booking._id,
+            ceremonyType: booking.ceremonyType,
+            date: booking.date,
+            priestName: booking.priestId?.name || "Priest",
+            priestId: booking.priestId?._id
+          },
+          date: booking.date
+        });
+      }
+    }
+
+    res.status(200).json(actions);
+  } catch (error) {
+    console.error("Get pending actions error:", error);
+    res.status(500).json({
+      message: "Server error while fetching pending actions",
+      error: error.message
+    });
   }
 };

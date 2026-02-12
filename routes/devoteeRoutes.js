@@ -13,6 +13,7 @@ router.get('/priests/:priestId', devoteeController.getPriestDetails);
 // Protected routes (need authentication and devotee role)
 router.get('/bookings', protect, devoteeOnly, devoteeController.getBookings);
 router.post('/bookings', protect, devoteeOnly, devoteeController.createBooking);
+router.get('/pending-actions', protect, devoteeOnly, devoteeController.getPendingActions);
 
 // Add devotee profile update route
 router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);

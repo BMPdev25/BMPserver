@@ -23,6 +23,7 @@ erDiagram
         ObjectId[] languagesSpoken FK "Ref: Language"
         Object security
         Object[] addresses
+        Object rating "Cached stats"
     }
 
     PriestProfile {
@@ -87,6 +88,15 @@ erDiagram
         Object categories
     }
 
+    Review {
+        ObjectId _id PK
+        ObjectId bookingId FK "Ref: Booking"
+        ObjectId reviewerId FK "Ref: User"
+        ObjectId revieweeId FK "Ref: User"
+        Number rating
+        String role "Enum: priest_to_devotee, devotee_to_priest"
+    }
+
     %% Finance
     Wallet {
         ObjectId _id PK
@@ -127,6 +137,7 @@ erDiagram
     Booking ||--|| CompanyRevenue : "generates"
     Booking ||--o{ Transaction : "related to"
     Booking ||--o{ Rating : "reviewed in"
+    Booking ||--o{ Review : "has reviews"
     
     User ||--|| Wallet : "owns (priest)"
     Wallet ||--o{ Transaction : "contains"
@@ -149,9 +160,10 @@ Central identity for all users (Priests and Devotees).
 | `userType` | String | Yes | - | Enum: `['priest', 'devotee']` |
 | `firebaseUid` | String | No | - | Sparse, Unique (Auth) |
 | `languagesSpoken` | ObjectId[] | No | `Language` | Array of Foreign Keys |
-| `addresses` | Object[] | No | - | embedded address details |
+| `addresses` | Object[] | No | - | Embedded address details |
 | `security` | Object | No | - | 2FA, lock status, login attempts |
 | `notifications` | Object | No | - | Preferences |
+| `rating` | Object | No | - | Cached stats: `average`, `count`, `breakdown` |
 
 ### **PriestProfile** (`priestprofiles`)
 Extended profile data for users with `userType: 'priest'`.
@@ -161,7 +173,7 @@ Extended profile data for users with `userType: 'priest'`.
 | `userId` | ObjectId | Yes | `User` | Foreign Key, Unique |
 | `services` | Object[] | No | `Ceremony` | List of offered services with custom price/duration |
 | `location` | GeoJSON | No | - | standard 2dsphere index |
-| `availability` | Object | No | - | `weeklySchedule` (Map), `dateOverrides` (Array) |
+| `availability` | Object | No | - | `weeklySchedule` (Map of String arrays), `dateOverrides` (Array) |
 | `serviceRadiusKm` | Number | No | - | Default: 10 |
 | `templesAffiliated`| Object[] | No | - | Name and Address |
 | `earnings` | Object | No | - | Cached stats (thisMonth, total, etc.) |
@@ -207,6 +219,19 @@ Feedback provided by a devotee after a booking.
 | `rating` | Number | Yes | - | 1-5 Scale |
 | `categories` | Object | Yes | - | Breakdown: punctuality, knowledge, behavior, overall |
 | `review` | String | No | - | Text comment |
+
+### **Review** (`reviews`)
+Generic review system (Priest <-> Devotee).
+| Field | Type | Required | Refs | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `_id` | ObjectId | Yes | PK | Primary Key |
+| `bookingId` | ObjectId | Yes | `Booking` | Foreign Key (Unique with reviewerId) |
+| `reviewerId` | ObjectId | Yes | `User` | Foreign Key |
+| `revieweeId` | ObjectId | Yes | `User` | Foreign Key |
+| `rating` | Number | Yes | - | 1-5 Scale |
+| `role` | String | Yes | - | Enum: `['priest_to_devotee', 'devotee_to_priest']` |
+| `comment` | String | No | - | Text review |
+| `isVisible` | Boolean | No | - | Default false |
 
 ### **Notification** (`notifications`)
 System notifications for users.
