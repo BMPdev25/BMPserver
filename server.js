@@ -18,6 +18,8 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const ceremonyRoutes = require("./routes/ceremonyRoutes");
 const languageRoutes = require('./routes/languageRoutes');
+const walletRoutes = require('./routes/walletRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 // Load environment variables
 dotenv.config();
@@ -67,6 +69,8 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/ceremonies', ceremonyRoutes);
 app.use('/api/languages', languageRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Connect to MongoDB and Start Server only if run directly
 if (require.main === module) {

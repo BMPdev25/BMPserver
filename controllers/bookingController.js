@@ -4,6 +4,7 @@ const User = require('../models/user');
 const PriestProfile = require('../models/priestProfile');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const { isPriestAvailable } = require('../utils/availability');
 
 // Lazy Razorpay initialization guarded by env variables
 let razorpay;
@@ -54,7 +55,7 @@ const getBookings = async (req, res) => {
     }
 
     let bookings = await Booking.find(query)
-      .populate('devoteeId', 'name phone profilePicture')
+      .populate('devoteeId', 'name phone profilePicture rating')
       .populate('priestId', 'name phone profilePicture')
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -108,7 +109,7 @@ const getBookingDetails = async (req, res) => {
     const userId = req.user.id;
 
     const booking = await Booking.findById(bookingId)
-      .populate('devoteeId', 'name phone email profilePicture')
+      .populate('devoteeId', 'name phone email profilePicture rating')
       .populate('priestId', 'name phone email profilePicture')
       .populate({
         path: 'priestId',
@@ -183,6 +184,24 @@ const createBooking = async (req, res) => {
         success: false,
         message: 'Priest not found'
       });
+    }
+
+    // Check priest schedule availability
+    const priestProfile = await PriestProfile.findOne({ userId: priestId });
+    if (priestProfile && priestProfile.availability) {
+        // Calculate duration
+        const [startHour, startMin] = startTime.split(':').map(Number);
+        const [endHour, endMin] = endTime.split(':').map(Number);
+        const durationMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+
+        // Check availability
+        const isAvailable = isPriestAvailable(priestProfile.availability, date, startTime, durationMinutes);
+        if (!isAvailable) {
+             return res.status(400).json({
+                success: false,
+                message: 'Priest is not available at the selected time (Schedule Constraint)'
+            });
+        }
     }
 
     // Check priest availability (simplified)

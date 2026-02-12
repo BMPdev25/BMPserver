@@ -17,9 +17,12 @@ router.use(priestOnly);
 router.put('/profile', priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
 router.get('/profile-completion', priestController.getProfileCompletion);
+router.put('/status', priestController.toggleStatus);
+
 
 // Booking routes
 router.get('/bookings', priestController.getBookings);
+router.get('/bookings/pending-actions', priestController.getPendingActions);
 router.get('/bookings/:bookingId', bookingController.getBookingDetails);
 router.put('/bookings/:bookingId/status', priestController.updateBookingStatus);
 

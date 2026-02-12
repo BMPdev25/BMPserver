@@ -14,6 +14,10 @@ const PriestServiceSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  requirements: {
+    type: [String],
+    default: [],
+  },
   // Optional seasonal overrides (optional but future-ready)
   seasonalPrice: {
     type: Number,
@@ -67,12 +71,23 @@ const priestProfileSchema = new mongoose.Schema({
   },
 
   availability: {
-    type: Map,
-    of: [{
-      available: Boolean,
-      startTime: String,
-      endTime: String,
+    weeklySchedule: {
+      type: Map,
+      of: [String],
+      default: {
+        monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: []
+      }
+    },
+    dateOverrides: [{
+      date: Date,
+      isUnavailable: { type: Boolean, default: false },
+      customSlots: [{
+        start: String,
+        end: String
+      }],
+      reason: String
     }],
+    timeZone: { type: String, default: "Asia/Kolkata" }
   },
 
   // Travel & service area management
@@ -96,32 +111,6 @@ const priestProfileSchema = new mongoose.Schema({
     status: { type: String, enum: ["available", "busy", "offline"], default: "offline" },
     lastUpdated: { type: Date, default: Date.now },
     autoToggle: { type: Boolean, default: true },
-  },
-
-  // Work schedule
-  schedule: {
-    workingHours: {
-      type: Map,
-      of: {
-        isWorking: Boolean,
-        startTime: String,
-        endTime: String,
-        breakTime: {
-          start: String,
-          end: String,
-        },
-      },
-    },
-    blockedDates: [{
-      date: Date,
-      reason: String,
-    }],
-    recurringUnavailability: [{
-      dayOfWeek: Number,
-      startTime: String,
-      endTime: String,
-      reason: String,
-    }],
   },
 
   // Earnings

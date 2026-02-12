@@ -94,7 +94,24 @@ const userSchema = new mongoose.Schema({
   languagesSpoken: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Language'
-  }]
+  }],
+  // Rating Statistics (Cached for performance)
+  rating: {
+    average: {
+      type: Number,
+      default: 0,
+      index: true, 
+    },
+    count: {
+      type: Number,
+      default: 0,
+    },
+    breakdown: {
+      type: Map,
+      of: Number, // e.g., { "5": 12, "4": 3 }
+      default: {},
+    }
+  }
 });
 
 // Indexes for performance
