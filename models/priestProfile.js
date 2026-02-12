@@ -175,4 +175,8 @@ const priestProfileSchema = new mongoose.Schema({
 // Very important: For radius search
 priestProfileSchema.index({ location: "2dsphere" });
 
+// Performance indexes for devotee queries
+priestProfileSchema.index({ isVerified: 1, "ratings.average": -1 });
+priestProfileSchema.index({ "ratings.average": -1 });
+
 module.exports = mongoose.model("PriestProfile", priestProfileSchema);

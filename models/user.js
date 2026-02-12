@@ -214,4 +214,8 @@ userSchema.methods.toSafeObject = function() {
   return userObject;
 };
 
+// Performance indexes
+userSchema.index({ userType: 1 });
+userSchema.index({ userType: 1, isActive: 1 });
+
 module.exports = mongoose.model('User', userSchema);

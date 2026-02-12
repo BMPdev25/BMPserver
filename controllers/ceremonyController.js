@@ -16,16 +16,17 @@ exports.getAllCeremonies = async (req, res) => {
     }
 
     const ceremoniesDocs = await Ceremony.find(filter)
+      .select("name description category subcategory duration pricing images statistics tags religiousTraditions isActive isFeatured")
       .sort(query ? { score: { $meta: "textScore" } } : { "statistics.popularityScore": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
       .exec();
 
     const ceremonies = ceremoniesDocs.map(c => {
-        const doc = c.toObject();
-        const primaryImage = c.images.find(img => img.isPrimary) || c.images[0];
-        doc.image = primaryImage ? primaryImage.url : null;
-        return doc;
+        const primaryImage = c.images?.find(img => img.isPrimary) || c.images?.[0];
+        c.image = primaryImage ? primaryImage.url : null;
+        return c;
     });
 
     const count = await Ceremony.countDocuments(filter);

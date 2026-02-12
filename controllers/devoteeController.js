@@ -13,8 +13,9 @@ exports.getAllPriests = async (req, res) => {
       .populate({
         path: "userId",
         select: "name email phone location languagesSpoken",
-        populate: { path: "languagesSpoken", select: "name nativeName" }
+        populate: { path: "languagesSpoken", select: "name" }
       })
+      .lean()
       .exec();
 
     res.status(200).json({
@@ -85,11 +86,14 @@ exports.searchPriests = async (req, res) => {
       .populate({
         path: "userId",
         select: "name email phone location languagesSpoken",
-        populate: { path: "languagesSpoken", select: "name nativeName" }
+        populate: { path: "languagesSpoken", select: "name" }
       })
+      .populate("services.ceremonyId", "name") // For ceremony badges
+      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified services")
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
       .exec();
 
     // Filter out priests who are not verified (all priests are verified by default now)
@@ -107,11 +111,17 @@ exports.searchPriests = async (req, res) => {
       religiousTradition: priest.religiousTradition,
       profilePicture: priest.profilePicture,
       rating: priest.ratings, // Map to singular 'rating'
+      ratings: priest.ratings,
       ceremonyCount: priest.ceremonyCount,
       location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
-      languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
+      languages: priest.userId?.languagesSpoken?.map(l => l.name || l) || [],
+      services: priest.services?.map(s => ({
+        name: s.ceremonyId?.name || "Unknown",
+        price: s.price,
+        duration: s.durationMinutes
+      })) || [],
     }));
 
     res.status(200).json({
@@ -140,9 +150,10 @@ exports.getPriestDetails = async (req, res) => {
       .populate({
         path: "userId",
         select: "name email phone location languagesSpoken",
-        populate: { path: "languagesSpoken", select: "name nativeName" }
+        populate: { path: "languagesSpoken", select: "name" }
       })
       .populate("services.ceremonyId", "name") // Populate ceremony details
+      .lean()
       .exec();
 
     if (priest) {
@@ -623,47 +634,52 @@ exports.deleteAddress = async (req, res) => {
 
 // --- Actions & Reviews ---
 
-// Get pending actions (e.g., rate bookngs)
+// Get pending actions (e.g., rate bookings)
 exports.getPendingActions = async (req, res) => {
   try {
     const devoteeId = req.user.id;
-    const actions = [];
 
-    // 1. Find completed bookings that haven't been reviewed by this devotee
-    // Find all completed bookings for this devotee
+    // 1. Find completed bookings for this devotee
     const completedBookings = await Booking.find({
       devoteeId: devoteeId,
       status: 'completed'
     })
     .populate("priestId", "name profilePicture")
-    .populate("ceremonyId", "name") // If ceremony details are needed
+    .select("_id ceremonyType date priestId")
     .sort({ date: -1 })
+    .lean()
     .exec();
 
-    // For each completed booking, check if a review exists
-    for (const booking of completedBookings) {
-      const existingReview = await Review.findOne({
-        bookingId: booking._id,
-        reviewerId: devoteeId
-      });
-
-      if (!existingReview) {
-        actions.push({
-          _id: booking._id,
-          type: 'rate_priest',
-          title: 'Rate your Experience',
-          description: `How was the ${booking.ceremonyType}?`,
-          booking: {
-            _id: booking._id,
-            ceremonyType: booking.ceremonyType,
-            date: booking.date,
-            priestName: booking.priestId?.name || "Priest",
-            priestId: booking.priestId?._id
-          },
-          date: booking.date
-        });
-      }
+    if (completedBookings.length === 0) {
+      return res.status(200).json([]);
     }
+
+    // 2. Bulk query: find all reviews by this devotee for these bookings
+    const bookingIds = completedBookings.map(b => b._id);
+    const existingReviews = await Review.find({
+      bookingId: { $in: bookingIds },
+      reviewerId: devoteeId
+    }).select("bookingId").lean();
+
+    const reviewedBookingIds = new Set(existingReviews.map(r => r.bookingId.toString()));
+
+    // 3. Filter out already-reviewed bookings
+    const actions = completedBookings
+      .filter(booking => !reviewedBookingIds.has(booking._id.toString()))
+      .map(booking => ({
+        _id: booking._id,
+        type: 'rate_priest',
+        title: 'Rate your Experience',
+        description: `How was the ${booking.ceremonyType}?`,
+        booking: {
+          _id: booking._id,
+          ceremonyType: booking.ceremonyType,
+          date: booking.date,
+          priestName: booking.priestId?.name || "Priest",
+          priestId: booking.priestId?._id
+        },
+        date: booking.date
+      }));
 
     res.status(200).json(actions);
   } catch (error) {
