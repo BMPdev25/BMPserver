@@ -47,8 +47,7 @@ exports.getAllPriests = async (req, res) => {
 // Search for priests
 exports.searchPriests = async (req, res) => {
   try {
-    const { ceremony, city, date, page = 1, limit = 10 } = req.query;
-    // console.log('Search priests request:', req.query);
+    const { ceremony, city, date, religion, minRating, page = 1, limit = 10 } = req.query;
 
     // Build query filter
     const filter = {};
@@ -62,7 +61,15 @@ exports.searchPriests = async (req, res) => {
       filter["userId.location.city"] = new RegExp(city, "i");
     }
 
-    // console.log('Search filter:', filter);
+    // Filter by religious tradition
+    if (religion) {
+      filter.religiousTradition = new RegExp(religion, "i");
+    }
+
+    // Filter by minimum rating
+    if (minRating) {
+      filter["ratings.average"] = { $gte: parseFloat(minRating) };
+    }
 
     // If search term is provided, we need to find matching users first (by name)
     // and then add them to the priest filter
@@ -70,14 +77,13 @@ exports.searchPriests = async (req, res) => {
       const searchRegex = new RegExp(req.query.search, "i");
       
       // Find users matching the name
-      const matchingUsers = await User.find({ name: searchRegex }).select('_id');
+      const matchingUsers = await User.find({ name: searchRegex }).select('_id').lean();
       const matchingUserIds = matchingUsers.map(u => u._id);
 
       // Add to filter with OR condition for name, description, or ceremonies
       filter.$or = [
         { userId: { $in: matchingUserIds } },
         { description: searchRegex },
-        // { ceremonies: { $elemMatch: { $regex: searchRegex } } } // removed legacy
       ];
     }
 
