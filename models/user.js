@@ -111,6 +111,22 @@ const userSchema = new mongoose.Schema({
       of: Number, // e.g., { "5": 12, "4": 3 }
       default: {},
     }
+  },
+  // Profile Picture (uploaded to Cloudinary)
+  profilePicture: {
+    url: { type: String, default: null },
+    publicId: { type: String, default: null },
+    uploadedAt: { type: Date, default: null }
+  },
+  // Family / Spiritual Details (for devotees)
+  familyDetails: {
+    gotra: { type: String, default: '' },
+    nakshatra: { type: String, default: '' },
+    rashi: { type: String, default: '' }
+  },
+  dateOfBirth: {
+    type: Date,
+    default: null
   }
 });
 

@@ -451,7 +451,13 @@ exports.updateProfile = async (req, res) => {
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
     user.phone = req.body.phone || user.phone;
-    // Add more fields as needed
+    // Update family details if provided
+    if (req.body.familyDetails) {
+      if (!user.familyDetails) user.familyDetails = {};
+      if (req.body.familyDetails.gotra !== undefined) user.familyDetails.gotra = req.body.familyDetails.gotra;
+      if (req.body.familyDetails.nakshatra !== undefined) user.familyDetails.nakshatra = req.body.familyDetails.nakshatra;
+      if (req.body.familyDetails.rashi !== undefined) user.familyDetails.rashi = req.body.familyDetails.rashi;
+    }
     await user.save();
     res.json(user);
   } catch (error) {

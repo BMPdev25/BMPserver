@@ -71,7 +71,7 @@ const getProfile = async (req, res) => {
 // Update user profile
 const updateProfile = async (req, res) => {
   try {
-    const { name, email, phone, languagesSpoken, privacy, notifications } = req.body;
+    const { name, email, phone, languagesSpoken, privacy, notifications, familyDetails } = req.body;
     const userId = req.user.id;
 
     const updateData = {};
@@ -79,9 +79,11 @@ const updateProfile = async (req, res) => {
     if (name) updateData.name = name.trim();
     if (email) updateData.email = email.trim();
     if (phone) updateData.phone = phone.trim();
+    if (req.body.dateOfBirth) updateData.dateOfBirth = req.body.dateOfBirth;
     if (languagesSpoken) updateData.languagesSpoken = languagesSpoken;
     if (privacy) updateData.privacy = { ...privacy };
     if (notifications) updateData.notifications = { ...notifications };
+    if (familyDetails) updateData.familyDetails = { ...familyDetails };
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -106,11 +108,12 @@ const updateProfile = async (req, res) => {
   } catch (error) {
     console.error('Update profile error:', error);
     
+    // Handle duplicate key error (email or phone)
     if (error.code === 11000) {
-      const field = Object.keys(error.keyPattern)[0];
+      const field = Object.keys(error.keyValue)[0];
       return res.status(400).json({
         success: false,
-        message: `${field} is already in use`
+        message: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists.`
       });
     }
 
