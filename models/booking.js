@@ -15,6 +15,7 @@ const bookingSchema = new mongoose.Schema({
   ceremonyType: {
     type: String,
     required: true,
+    maxlength: [100, 'Ceremony type cannot exceed 100 characters'],
   },
   date: {
     type: Date,

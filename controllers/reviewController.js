@@ -51,6 +51,12 @@ exports.submitReview = async (req, res) => {
     const { bookingId, rating, comment, tags } = req.body;
     const reviewerId = req.user.id; // User ID from auth middleware
 
+    // BUG-4 FIX: Validate rating range before touching the DB
+    const parsedRating = parseFloat(rating);
+    if (!rating || isNaN(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+      return res.status(400).json({ message: 'Rating must be a number between 1 and 5' });
+    }
+
     // 1. Validate Booking
     const booking = await Booking.findById(bookingId);
     if (!booking) {

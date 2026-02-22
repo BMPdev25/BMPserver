@@ -69,33 +69,40 @@ exports.updateProfile = async (req, res) => {
 exports.toggleStatus = async (req, res) => {
   try {
     const { status, autoToggle } = req.body;
-    
-    // Find profile
-    let profile = await PriestProfile.findOne({ userId: req.user.id });
-    if (!profile) {
-      return res.status(404).json({ message: "Profile not found" });
+    const validStatuses = ['available', 'busy', 'offline'];
+
+    // BUG-5 FIX: Build $set payload and use findOneAndUpdate to avoid
+    // undefined sub-document path errors when currentAvailability is not initialized
+    const setPayload = { 'currentAvailability.lastUpdated': new Date() };
+
+    if (status) {
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+      setPayload['currentAvailability.status'] = status;
     }
 
-    // Update status fields if provided
-    if (status) {
-      profile.currentAvailability.status = status;
-    }
-    
     if (typeof autoToggle === 'boolean') {
-      profile.currentAvailability.autoToggle = autoToggle;
+      setPayload['currentAvailability.autoToggle'] = autoToggle;
     }
-    
-    profile.currentAvailability.lastUpdated = new Date();
-    
-    await profile.save();
-    
-    res.status(200).json({ 
-      success: true, 
-      currentAvailability: profile.currentAvailability 
+
+    const profile = await PriestProfile.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: setPayload },
+      { new: true, upsert: false }
+    );
+
+    if (!profile) {
+      return res.status(404).json({ message: 'Profile not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      currentAvailability: profile.currentAvailability
     });
   } catch (error) {
-    console.error("Toggle status error:", error);
-    res.status(500).json({ message: "Server error while updating status" });
+    console.error('Toggle status error:', error);
+    res.status(500).json({ message: 'Server error while updating status' });
   }
 };
 

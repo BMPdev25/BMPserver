@@ -1,0 +1,15 @@
+devotee | Anish | email:anish@bmp.com | phone:9999999992
+devotee | Rohan Gupta | email:devotee@example.com | phone:9876543210
+devotee | Anirudh | email:anirudh@bmp.com | phone:9999999993
+priest | Test | email:test@mail.com | phone:1233567890
+priest | Pandit Sharma | email:priest1@example.com | phone:9876543211
+devotee | Devotee One | email:devotee1@example.com | phone:9000000001
+devotee | Sunny | email:sunny@bmp.com | phone:9999999991
+priest | Acharya Mishra | email:priest2@example.com | phone:9876543212
+devotee | Anish Grandhe | email:grandheanish@gmail.com | phone:8977002911
+devotee | Devotee 2 | email:devotee2@example.com | phone:900000002
+devotee | Jitest | email:jitu@email.com | phone:1234567890
+devotee | Test Devotee | email:test.devotee.1771173344467@example.com | phone:9993344475
+devotee | Upload Tester | email:test.upload.1771173931640@example.com | phone:8883931640
+devotee | Upload Tester | email:test.upload.1771174023425@example.com | phone:8884023425
+devotee | Upload Tester | email:test.upload.1771174043043@example.com | phone:8884043043

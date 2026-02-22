@@ -57,18 +57,23 @@ exports.searchPriests = async (req, res) => {
       // TODO: Implement search by service/ceremonyId if needed
     }
 
+    // BUG-10 FIX: 'userId.location.city' cannot be queried via Mongoose populate dot-notation.
+    // Do a pre-query on User collection to get matching user IDs, then filter by priestProfile.userId.
     if (city) {
-      filter["userId.location.city"] = new RegExp(city, "i");
+      const cityRegex = new RegExp(city, 'i');
+      const cityUsers = await User.find({ 'location.city': cityRegex }).select('_id').lean();
+      const cityUserIds = cityUsers.map(u => u._id);
+      filter.userId = { $in: cityUserIds };
     }
 
     // Filter by religious tradition
     if (religion) {
-      filter.religiousTradition = new RegExp(religion, "i");
+      filter.religiousTradition = new RegExp(religion, 'i');
     }
 
     // Filter by minimum rating
     if (minRating) {
-      filter["ratings.average"] = { $gte: parseFloat(minRating) };
+      filter['ratings.average'] = { $gte: parseFloat(minRating) };
     }
 
     // If search term is provided, we need to find matching users first (by name)
@@ -149,7 +154,7 @@ exports.searchPriests = async (req, res) => {
 exports.getPriestDetails = async (req, res) => {
   try {
     const { priestId } = req.params;
-    console.log("Getting priest details for priestId:", priestId);
+    console.log("devoteeController: getPriestDetails for priestId:", priestId);
 
     // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
@@ -161,6 +166,19 @@ exports.getPriestDetails = async (req, res) => {
       .populate("services.ceremonyId", "name") // Populate ceremony details
       .lean()
       .exec();
+
+    if (!priest) {
+      console.log("devoteeController: PriestProfile not found by _id. Trying to find by userId...");
+      priest = await PriestProfile.findOne({ userId: priestId })
+        .populate({
+          path: "userId",
+          select: "name email phone location languagesSpoken",
+          populate: { path: "languagesSpoken", select: "name" }
+        })
+        .populate("services.ceremonyId", "name")
+        .lean()
+        .exec();
+    }
 
     if (priest) {
       
@@ -224,52 +242,11 @@ exports.getPriestDetails = async (req, res) => {
       return res.status(200).json(priestData);
     }
 
-    // Fallback demo data if priest not found in database
-    const demoData = {
-      _id: priestId,
-      name: priestId.includes("mahantesh") ? "Mahantesh" : "Dr. Rajesh Sharma",
-      experience: 25,
-      religiousTradition: "Hinduism",
-      ceremonies: [
-        { name: "Wedding", price: 15000, duration: 120 },
-        { name: "Grih Pravesh", price: 8000, duration: 60 },
-        { name: "Baby Naming", price: 5000, duration: 45 },
-        { name: "Satyanarayan Katha", price: 11000, duration: 90 },
-      ],
-      description:
-        "Experienced priest specializing in various religious ceremonies.",
-      profilePicture: "",
-      ratings: {
-        average: 4.9,
-        count: 120,
-      },
-      availability: "available",
-      
-      // Demo Data Extended Fields
-      languages: ["Hindi", "Sanskrit", "English"],
-      certifications: ["Vedic Studies PhD", "Jyotish Visharad"],
-      templeAffiliation: { name: "Kashi Vishwanath Temple", address: "Varanasi, UP" },
-      weeklyAvailability: {
-        monday: { available: true, startTime: "09:00", endTime: "18:00" },
-        tuesday: { available: true, startTime: "09:00", endTime: "18:00" },
-        wednesday: { available: true, startTime: "09:00", endTime: "18:00" },
-        thursday: { available: true, startTime: "09:00", endTime: "18:00" },
-        friday: { available: true, startTime: "09:00", endTime: "18:00" },
-        saturday: { available: true, startTime: "08:00", endTime: "20:00" },
-        sunday: { available: true, startTime: "08:00", endTime: "20:00" },
-      },
-
-      priceList: {
-        Wedding: 15000,
-        "Grih Pravesh": 8000,
-        "Baby Naming": 5000,
-        "Satyanarayan Katha": 11000,
-        default: 8000,
-      },
-      ceremonyCount: 200,
-    };
-
-    res.status(200).json(demoData);
+    // BUG-8 FIX: Remove hardcoded demo data fallback — return proper 404 instead
+    return res.status(404).json({
+      success: false,
+      message: 'Priest not found'
+    });
   } catch (error) {
     console.error("Get priest details error:", error);
     res.status(500).json({
@@ -328,6 +305,17 @@ exports.createBooking = async (req, res) => {
       console.error("Missing required fields:", missingFields);
       return res.status(400).json({
         message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
+    }
+
+    // BUG-2 FIX: Reject bookings with past dates
+    const todayStr = new Date().toISOString().split('T')[0];
+    const bookingDateStr = new Date(req.body.date).toISOString().split('T')[0];
+
+    if (bookingDateStr < todayStr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking date cannot be in the past'
       });
     }
 
