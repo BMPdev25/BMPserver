@@ -114,15 +114,7 @@ const getBookingDetails = async (req, res) => {
 
     const booking = await Booking.findById(bookingId)
       .populate('devoteeId', 'name phone email profilePicture rating')
-      .populate('priestId', 'name phone email profilePicture')
-      .populate({
-        path: 'priestId',
-        populate: {
-          path: 'priestProfile',
-          model: 'PriestProfile',
-          select: 'ratings experience religiousTradition'
-        }
-      });
+      .populate('priestId', 'name phone email profilePicture');
 
     if (!booking) {
       return res.status(404).json({
@@ -139,12 +131,22 @@ const getBookingDetails = async (req, res) => {
       });
     }
 
+    // Fetch priest profile data separately (PriestProfile is linked by userId, not embedded in User)
+    const priestProfile = await PriestProfile.findOne({ userId: booking.priestId._id })
+      .select('ratings experience religiousTradition')
+      .lean();
+
     // Auto-categorize booking
     booking.category = categorizeBooking(booking);
 
+    const bookingObj = booking.toObject();
+    if (priestProfile) {
+      bookingObj.priestProfile = priestProfile;
+    }
+
     res.json({
       success: true,
-      data: booking
+      data: bookingObj
     });
   } catch (error) {
     console.error('Get booking details error:', error);
