@@ -29,6 +29,10 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     unique: true
   },
+  expoPushToken: {
+    type: String,
+    default: null
+  },
   userType: {
     type: String,
     enum: ['priest', 'devotee'],
@@ -127,6 +131,12 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: {
     type: Date,
     default: null
+  },
+  devoteeReliability: {
+    score: { type: Number, default: 100 }, // Starts at 100
+    cancellationCount: { type: Number, default: 0 },
+    lateCancellationCount: { type: Number, default: 0 },
+    completedCount: { type: Number, default: 0 }
   }
 });
 

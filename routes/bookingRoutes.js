@@ -7,6 +7,7 @@ const {
   createBooking,
   updateBookingStatus,
   markAsCompleted,
+  cancelBookingByDevotee,
   createPaymentOrder,
   verifyPayment,
   getPaymentDetails,
@@ -47,6 +48,7 @@ router.post('/', bookingCreationLimit, createBooking);
 
 // Booking status management
 router.put('/:bookingId/status', updateBookingStatus);
+router.put('/:bookingId/cancel-devotee', cancelBookingByDevotee);
 router.post('/:bookingId/complete', markAsCompleted);
 
 // Payment routes

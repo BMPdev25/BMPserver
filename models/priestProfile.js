@@ -22,6 +22,11 @@ const PriestServiceSchema = new mongoose.Schema({
   seasonalPrice: {
     type: Number,
   },
+  customSteps: [{
+    title: String,
+    description: String,
+    durationEstimate: Number
+  }],
 }, { _id: false });
 
 const priestProfileSchema = new mongoose.Schema({
@@ -104,7 +109,7 @@ const priestProfileSchema = new mongoose.Schema({
   },
 
   ceremonyCount: { type: Number, default: 0 },
-  isVerified: { type: Boolean, default: true },
+  isVerified: { type: Boolean, default: false },
 
   // Real-time status
   currentAvailability: {

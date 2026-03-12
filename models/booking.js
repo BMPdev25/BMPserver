@@ -10,7 +10,8 @@ const bookingSchema = new mongoose.Schema({
   priestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    // Required except for instant booking in 'searching' phase
+    required: function() { return this.status !== 'searching'; },
   },
   ceremonyType: {
     type: String,
@@ -38,11 +39,23 @@ const bookingSchema = new mongoose.Schema({
       type: String,
       required: true,
     },
+    coordinates: {
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: [Number], // [lng, lat]
+    }
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'completed', 'cancelled'],
+    enum: ['pending', 'searching', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'expired'],
     default: 'pending',
+  },
+  bookingType: {
+    type: String,
+    enum: ['scheduled', 'instant'],
+    default: 'scheduled',
+  },
+  expiryTime: {
+    type: Date,
   },
   basePrice: {
     type: Number,

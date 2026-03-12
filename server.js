@@ -21,21 +21,50 @@ const languageRoutes = require('./routes/languageRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
+const { scheduleReminders } = require('./jobs/cronJobs');
 
 // Load environment variables
 dotenv.config();
+
+// Start cron jobs
+scheduleReminders();
 
 // Create Express app
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.IO for real-time features
 const io = socketIo(server, {
   cors: {
     origin: process.env.CLIENT_URL || "*",
     methods: ["GET", "POST"]
   }
 });
+
+// Map to store connected users and their socket IDs
+const userSockets = new Map();
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('register', (userId) => {
+    if (userId) {
+      userSockets.set(userId.toString(), socket.id);
+      socket.userId = userId.toString();
+      console.log(`User ${userId} registered with socket ${socket.id}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.userId) {
+      userSockets.delete(socket.userId);
+      console.log(`User ${socket.userId} disconnected`);
+    }
+  });
+});
+
+// Make io and userSockets accessible in controllers
+app.set('io', io);
+app.set('userSockets', userSockets);
 
 // Security and performance middleware
 app.use(helmet({

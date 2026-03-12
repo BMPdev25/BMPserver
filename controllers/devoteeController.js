@@ -100,7 +100,7 @@ exports.searchPriests = async (req, res) => {
         populate: { path: "languagesSpoken", select: "name" }
       })
       .populate("services.ceremonyId", "name") // For ceremony badges
-      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified services")
+      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified services analytics.completionRate")
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
@@ -131,8 +131,11 @@ exports.searchPriests = async (req, res) => {
       services: priest.services?.map(s => ({
         name: s.ceremonyId?.name || "Unknown",
         price: s.price,
-        duration: s.durationMinutes
+        duration: s.durationMinutes,
+        ritualSteps: s.ceremonyId?.ritualSteps || [],
+        customSteps: s.customSteps || []
       })) || [],
+      completionRate: priest.analytics?.completionRate ?? 100,
     }));
 
     res.status(200).json({
@@ -156,14 +159,14 @@ exports.getPriestDetails = async (req, res) => {
     const { priestId } = req.params;
     console.log("devoteeController: getPriestDetails for priestId:", priestId);
 
-    // Try to find actual priest first
+      // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
       .populate({
         path: "userId",
         select: "name email phone location languagesSpoken",
         populate: { path: "languagesSpoken", select: "name" }
       })
-      .populate("services.ceremonyId", "name") // Populate ceremony details
+      .populate("services.ceremonyId", "name ritualSteps") // Populate ceremony details and base ritual steps
       .lean()
       .exec();
 
@@ -175,7 +178,7 @@ exports.getPriestDetails = async (req, res) => {
           select: "name email phone location languagesSpoken",
           populate: { path: "languagesSpoken", select: "name" }
         })
-        .populate("services.ceremonyId", "name")
+        .populate("services.ceremonyId", "name ritualSteps")
         .lean()
         .exec();
     }
@@ -187,7 +190,9 @@ exports.getPriestDetails = async (req, res) => {
         id: service.ceremonyId?._id,
         name: service.ceremonyId?.name || "Unknown Ceremony",
         price: service.price,
-        duration: service.durationMinutes
+        duration: service.durationMinutes,
+        ritualSteps: service.ceremonyId?.ritualSteps || [],
+        customSteps: service.customSteps || []
       })) || [];
 
       // Format weekly availability
@@ -237,6 +242,7 @@ exports.getPriestDetails = async (req, res) => {
           default: 8000,
         },
         ceremonyCount: priest.ceremonyCount || 100,
+        completionRate: priest.analytics?.completionRate ?? 100,
       };
       
       return res.status(200).json(priestData);
@@ -690,3 +696,102 @@ exports.getPendingActions = async (req, res) => {
     });
   }
 };
+
+// Book an instant ceremony
+exports.bookInstantCeremony = async (req, res) => {
+  try {
+    const { ceremonyType, latitude, longitude, maxPrice, address, city } = req.body;
+    const devoteeId = req.user.id;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ message: "Location coordinates required for instant booking." });
+    }
+
+    // 1. Find matching priests using GeoJSON search
+    const matchingPriests = await PriestProfile.find({
+      isVerified: true,
+      'currentAvailability.status': 'available',
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(longitude), parseFloat(latitude)] // [lng, lat]
+          },
+          $maxDistance: 50000 // 50km
+        }
+      }
+    }).populate('userId', 'name profilePicture');
+
+    // 2. Filter by priest's custom radius and price
+    const eligiblePriests = matchingPriests.filter(priest => {
+      // Basic radius check is handled by $near. In future, we can check priest.serviceRadiusKm
+      
+      // Price Check
+      const price = priest.priceList ? (priest.priceList.get(ceremonyType) || priest.priceList.get('default')) : 0;
+      if (maxPrice && price > maxPrice) return false;
+      if (!price) return false;
+      
+      return true;
+    });
+
+    if (eligiblePriests.length === 0) {
+      return res.status(404).json({ message: "No priests available for instant booking in your area right now." });
+    }
+
+    // 3. Create a 'searching' booking
+    const expiryTime = new Date();
+    expiryTime.setMinutes(expiryTime.getMinutes() + 5);
+
+    const booking = new Booking({
+      devoteeId,
+      ceremonyType,
+      date: new Date(),
+      startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      endTime: "07:00", // Default end time placeholder
+      location: { 
+        address, 
+        city,
+        coordinates: {
+          type: 'Point',
+          coordinates: [parseFloat(longitude), parseFloat(latitude)]
+        }
+      },
+      status: 'searching',
+      bookingType: 'instant',
+      expiryTime,
+      basePrice: eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default'),
+      platformFee: Math.round((eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default')) * 0.05),
+      totalAmount: Math.round((eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default')) * 1.05),
+    });
+
+    const savedBooking = await booking.save();
+
+    // 4. Notify matching priests via Socket.io
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+
+    let notifiedCount = 0;
+    eligiblePriests.forEach(priest => {
+      const socketId = userSockets.get(priest.userId._id.toString());
+      if (socketId) {
+        io.to(socketId).emit('new_instant_request', {
+          bookingId: savedBooking._id,
+          ceremonyType,
+          location: { address, city },
+          price: savedBooking.totalAmount,
+          expiryTime: savedBooking.expiryTime
+        });
+        notifiedCount++;
+      }
+    });
+
+    console.log(`Instant booking initiated. Notified ${notifiedCount} priests.`);
+
+    res.status(201).json(savedBooking);
+
+  } catch (error) {
+    console.error("Instant booking error:", error);
+    res.status(500).json({ message: "Server error during instant booking initiation", error: error.message });
+  }
+};
+

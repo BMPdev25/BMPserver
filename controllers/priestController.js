@@ -6,6 +6,7 @@ const Wallet = require("../models/wallet");
 const Notification = require("../models/notification");
 const Review = require("../models/review");
 const { processBookingCompletion, getOrCreateWallet } = require("../services/commissionEngine");
+const { recalculateReliability } = require("../utils/reliabilityEngine");
 
 // Create or update priest profile
 exports.updateProfile = async (req, res) => {
@@ -561,6 +562,13 @@ exports.updateBookingStatus = async (req, res) => {
       message: `Booking ${status} successfully`,
       booking: updatedBooking,
     });
+
+    // Fire-and-forget reliability recalculation after response is sent
+    if (status === "completed" || status === "cancelled") {
+      recalculateReliability(priestId).catch(err =>
+        console.warn('Reliability recalculation failed:', err.message)
+      );
+    }
   } catch (error) {
     console.error("Update booking status error:", error);
     res.status(500).json({
@@ -838,6 +846,79 @@ exports.getDocument = async (req, res) => {
     res.status(500).json({ message: "Server error while fetching document" });
   }
 };
+
+// Accept an instant booking request
+exports.acceptInstantBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    const priestId = req.user.id; // User ID of the priest
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking request not found." });
+    }
+
+    if (booking.status !== 'searching') {
+      return res.status(400).json({ message: `Cannot accept this booking. Status is ${booking.status}.` });
+    }
+
+    if (booking.expiryTime && new Date() > booking.expiryTime) {
+      booking.status = 'expired';
+      await booking.save();
+      return res.status(400).json({ message: "Booking request has expired." });
+    }
+
+    // Atomically accept the booking (first come first served)
+    const updatedBooking = await Booking.findOneAndUpdate(
+      { _id: bookingId, status: 'searching' },
+      { 
+        $set: { 
+          status: 'confirmed', 
+          priestId: priestId,
+          updatedAt: Date.now()
+        } 
+      },
+      { new: true }
+    ).populate('devoteeId', 'name');
+
+    if (!updatedBooking) {
+      return res.status(400).json({ message: "Booking was already accepted by someone else or is no longer available." });
+    }
+
+    // Notify the devotee via Socket.io
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+    const devoteeSocketId = userSockets.get(updatedBooking.devoteeId._id.toString());
+
+    if (devoteeSocketId) {
+      io.to(devoteeSocketId).emit('instant_booking_accepted', {
+        bookingId: updatedBooking._id,
+        priestId: priestId,
+        message: "A priest has accepted your instant booking request!"
+      });
+    }
+
+    // Create notification for devotee
+    try {
+      await Notification.createNotification({
+        userId: updatedBooking.devoteeId._id,
+        title: "Instant Booking Confirmed",
+        message: `A priest has accepted your instant booking request for ${updatedBooking.ceremonyType}.`,
+        type: "booking",
+        relatedId: updatedBooking._id,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to create persistence notification for instant booking:", notifErr);
+    }
+
+    res.status(200).json(updatedBooking);
+
+  } catch (error) {
+    console.error("Accept instant booking error:", error);
+    res.status(500).json({ message: "Server error while accepting instant booking", error: error.message });
+  }
+};
+
 
 // Get profile completion percentage
 exports.getProfileCompletion = async (req, res) => {

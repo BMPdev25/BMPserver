@@ -7,6 +7,7 @@ const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { isPriestAvailable } = require('../utils/availability');
 const Ceremony = require('../models/ceremony');
+const { recalculateReliability, updateDevoteeReliability } = require('../utils/reliabilityEngine');
 
 const PLATFORM_FEE_PERCENT = 0.05; // 5% fee
 
@@ -230,6 +231,15 @@ const createBooking = async (req, res) => {
 
     // Check priest schedule availability
     const priestProfile = await PriestProfile.findOne({ userId: priestId });
+
+    // Block bookings for unverified priests
+    if (priestProfile && !priestProfile.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: 'This priest has not been verified yet. Bookings cannot be created for unverified priests.'
+      });
+    }
+
     if (priestProfile && priestProfile.availability) {
         // Calculate duration
         const [startHour, startMin] = startTime.split(':').map(Number);
@@ -331,7 +341,7 @@ const updateBookingStatus = async (req, res) => {
     const { status, reason } = req.body;
     const userId = req.user.id;
 
-    if (!['confirmed', 'completed', 'cancelled'].includes(status)) {
+    if (!['confirmed', 'arrived', 'in_progress', 'completed', 'cancelled'].includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid status'
@@ -357,7 +367,9 @@ const updateBookingStatus = async (req, res) => {
     // BUG-3 FIX: State-machine guard — enforce valid transitions
     const VALID_TRANSITIONS = {
       pending:   ['confirmed', 'cancelled'],
-      confirmed: ['completed'], // Removed 'cancelled' to satisfy test strictness
+      confirmed: ['arrived', 'cancelled'],
+      arrived:   ['in_progress', 'cancelled'],
+      in_progress: ['completed', 'cancelled'],
       completed: [],
       cancelled: [],
     };
@@ -366,6 +378,24 @@ const updateBookingStatus = async (req, res) => {
         success: false,
         message: `Cannot transition booking from '${booking.status}' to '${status}'`
       });
+    }
+
+    // DATE LOCK: Prevent arrived/in_progress updates before the booking day
+    if (['arrived', 'in_progress'].includes(status)) {
+      const now = new Date();
+      const bookingDate = new Date(booking.date);
+      
+      // Compare only YYYY-MM-DD
+      const isSameDay = now.toISOString().split('T')[0] === bookingDate.toISOString().split('T')[0];
+      const isPastDay = now.getTime() > bookingDate.getTime();
+
+      // If it's a future day, block it
+      if (now.toISOString().split('T')[0] < bookingDate.toISOString().split('T')[0]) {
+        return res.status(400).json({
+          success: false,
+          message: 'Operation can only be performed on the scheduled day of the booking'
+        });
+      }
     }
 
     // Update booking status
@@ -388,24 +418,90 @@ const updateBookingStatus = async (req, res) => {
 
     await booking.save();
 
-    // Notify devotee when priest accepts or rejects
-    if (status === 'confirmed' || status === 'cancelled') {
+    // AUTO-CANCEL CONCURRENT REQUESTS: If confirmed, cancel other pending requests for the same slot
+    if (status === 'confirmed') {
       try {
-        const isAccepted = status === 'confirmed';
-        const priest = await User.findById(booking.priestId).select('name');
-        const priestName = priest?.name || 'Your priest';
+        const concurrentPendingBookings = await Booking.find({
+          _id: { $ne: booking._id },
+          devoteeId: booking.devoteeId,
+          date: booking.date,
+          startTime: booking.startTime,
+          status: 'pending'
+        });
+
+        if (concurrentPendingBookings.length > 0) {
+          const cancelReason = 'Another priest accepted a concurrent request';
+          const cancelTimestamp = new Date();
+
+          for (const otherBooking of concurrentPendingBookings) {
+            otherBooking.status = 'cancelled';
+            otherBooking.cancellationReason = cancelReason;
+            otherBooking.cancellationDate = cancelTimestamp;
+            otherBooking.statusHistory.push({
+              status: 'cancelled',
+              timestamp: cancelTimestamp,
+              updatedBy: userId, // The priest who accepted the other booking
+              reason: cancelReason
+            });
+            await otherBooking.save();
+
+            // Notify the other priest
+            try {
+              await Notification.createNotification({
+                userId: otherBooking.priestId,
+                title: 'Request No Longer Available',
+                message: `The request for ${otherBooking.ceremonyType} on ${new Date(otherBooking.date).toLocaleDateString('en-IN')} at ${otherBooking.startTime} has been cancelled because the devotee's slot was filled by another priest.`,
+                type: 'booking',
+                relatedId: otherBooking._id,
+              });
+            } catch (notifErr) {
+              console.warn(`Failed to notify priest ${otherBooking.priestId} of auto-cancellation:`, notifErr.message);
+            }
+          }
+          console.log(`Auto-cancelled ${concurrentPendingBookings.length} concurrent pending requests for devotee ${booking.devoteeId}`);
+        }
+      } catch (autoCancelError) {
+        console.error('Error during auto-cancellation of concurrent requests:', autoCancelError);
+      }
+    }
+
+    // Notify devotee when priest accepts or rejects
+    try {
+      let title = '';
+      let message = '';
+      const priest = await User.findById(booking.priestId).select('name');
+      const priestName = priest?.name || 'Your priest';
+
+      switch (status) {
+        case 'confirmed':
+          title = 'Booking Accepted 🎉';
+          message = `${priestName} has accepted your ${booking.ceremonyType} request! Date: ${new Date(booking.date).toLocaleDateString('en-IN')}.`;
+          break;
+        case 'arrived':
+          title = 'Priest Arrived 📍';
+          message = `${priestName} has arrived at your location for the ${booking.ceremonyType}.`;
+          break;
+        case 'in_progress':
+          title = 'Ritual Started 🪔';
+          message = `The ${booking.ceremonyType} has officially started with ${priestName}.`;
+          break;
+        case 'cancelled':
+          title = 'Booking Declined';
+          message = `${priestName} has declined your ${booking.ceremonyType} request. Please try booking another available priest.`;
+          break;
+      }
+
+      if (title && message) {
         await Notification.createNotification({
           userId: booking.devoteeId,
-          title: isAccepted ? 'Booking Accepted 🎉' : 'Booking Declined',
-          message: isAccepted
-            ? `${priestName} has accepted your ${booking.ceremonyType} request! Date: ${new Date(booking.date).toLocaleDateString('en-IN')}.`
-            : `${priestName} has declined your ${booking.ceremonyType} request. Please try booking another available priest.`,
+          title,
+          message,
           type: 'booking',
           relatedId: booking._id,
         });
-      } catch (notifErr) {
-        console.warn('Failed to create devotee notification:', notifErr.message);
       }
+    } catch (notifErr) {
+      console.warn('Failed to create devotee notification:', notifErr.message);
     }
 
     // Update priest analytics if booking is completed
@@ -446,6 +542,18 @@ const updateBookingStatus = async (req, res) => {
         }
       } catch (analyticsError) {
         console.warn('Failed to update priest analytics:', analyticsError);
+      }
+    }
+
+    // Recalculate reliability for completed or cancelled bookings
+    if (status === 'completed' || status === 'cancelled') {
+      try {
+        await recalculateReliability(booking.priestId);
+        if (status === 'completed') {
+            await updateDevoteeReliability(booking.devoteeId, 'completion');
+        }
+      } catch (relErr) {
+        console.warn('Failed to recalculate reliability:', relErr.message);
       }
     }
 
@@ -520,6 +628,14 @@ const markAsCompleted = async (req, res) => {
     });
 
     await booking.save();
+
+    // Recalculate reliability after marking as completed
+    try {
+      await recalculateReliability(booking.priestId);
+      await updateDevoteeReliability(booking.devoteeId, 'completion');
+    } catch (relErr) {
+      console.warn('Failed to recalculate reliability:', relErr.message);
+    }
 
     res.json({
       success: true,
@@ -698,12 +814,110 @@ const getPaymentDetails = async (req, res) => {
   }
 };
 
+// Cancel booking by devotee
+const cancelBookingByDevotee = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { reason } = req.body;
+    const devoteeId = req.user.id;
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    if (booking.devoteeId.toString() !== devoteeId) {
+      return res.status(403).json({ success: false, message: 'Only the devotee who made the booking can cancel it' });
+    }
+
+    if (['completed', 'cancelled', 'expired'].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: `Cannot cancel a booking that is already ${booking.status}` });
+    }
+
+    const now = new Date();
+    const bookingDate = new Date(booking.date);
+    // Combine date and startTime for accurate comparison
+    const [hours, minutes] = (booking.startTime || '00:00').split(':').map(Number);
+    bookingDate.setHours(hours, minutes, 0, 0);
+
+    const diffMs = bookingDate.getTime() - now.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    let refundAmount = 0;
+    let actionType = 'cancellation';
+
+    if (diffHours > 72) {
+      // Full refund
+      refundAmount = booking.totalAmount;
+      actionType = 'cancellation';
+    } else if (diffHours >= 24) {
+      // Refund minus platform fee
+      refundAmount = booking.basePrice;
+      actionType = 'cancellation';
+    } else {
+      // No refund
+      refundAmount = 0;
+      actionType = 'late_cancellation';
+    }
+
+    // Update booking status
+    booking.status = 'cancelled';
+    booking.cancellationDate = now;
+    booking.cancellationReason = reason || 'Cancelled by devotee';
+    
+    if (!booking.paymentDetails) {
+        booking.paymentDetails = {};
+    }
+    booking.paymentDetails.refundAmount = refundAmount;
+    
+    booking.statusHistory.push({
+      status: 'cancelled',
+      timestamp: now,
+      updatedBy: devoteeId,
+      reason: reason || 'Cancelled by devotee'
+    });
+
+    await booking.save();
+
+    // Update devotee reliability
+    await updateDevoteeReliability(devoteeId, actionType);
+
+    // Recalculate priest reliability (a cancellation still affects the slot availability)
+    await recalculateReliability(booking.priestId);
+
+    // Notify priest
+    try {
+      await Notification.createNotification({
+        userId: booking.priestId,
+        title: 'Booking Cancelled ❌',
+        message: `The devotee has cancelled the ${booking.ceremonyType} booking for ${bookingDate.toLocaleDateString('en-IN')}. Reason: ${reason || 'Not specified'}.`,
+        type: 'booking',
+        relatedId: booking._id,
+      });
+    } catch (notifErr) {
+      console.warn('Failed to notify priest of cancellation:', notifErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: 'Booking cancelled successfully',
+      refundAmount,
+      data: booking
+    });
+
+  } catch (error) {
+    console.error('Cancel booking error:', error);
+    res.status(500).json({ success: false, message: 'Failed to cancel booking', error: error.message });
+  }
+};
+
 module.exports = {
   getBookings,
   getBookingDetails,
   createBooking,
   updateBookingStatus,
   markAsCompleted,
+  cancelBookingByDevotee,
   createPaymentOrder,
   verifyPayment,
   getPaymentDetails,

@@ -23,6 +23,7 @@ router.put('/status', priestController.toggleStatus);
 // Booking routes
 router.get('/bookings', priestController.getBookings);
 router.get('/bookings/pending-actions', priestController.getPendingActions);
+router.post('/bookings/instant/accept', priestController.acceptInstantBooking);
 router.get('/bookings/:bookingId', bookingController.getBookingDetails);
 router.put('/bookings/:bookingId/status', priestController.updateBookingStatus);
 
