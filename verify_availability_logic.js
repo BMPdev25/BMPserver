@@ -1,8 +1,18 @@
 const mongoose = require('mongoose');
 const axios = require('axios');
 
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load environment variables from .env file
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
 async function verifyFiltering() {
-  const MONGO_URI = "mongodb+srv://bmpoffice24x7_db_user:Mktdy7ClTGmh4voO@cluster0.5nhycy3.mongodb.net/";
+  const MONGO_URI = process.env.MONGO_URI;
+  if (!MONGO_URI) {
+    console.error('ERROR: MONGO_URI not found in .env file');
+    process.exit(1);
+  }
   const API_URL = "http://localhost:5000/api/devotee/priests";
   const PRIEST_ID = "6947dee15cbd57f36d6a1bb2"; // Pandit Sharma
 

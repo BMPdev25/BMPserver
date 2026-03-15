@@ -1,7 +1,17 @@
 const mongoose = require('mongoose');
 
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load environment variables
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
 async function fixPriestServices() {
-  const MONGO_URI = "mongodb+srv://bmpoffice24x7_db_user:Mktdy7ClTGmh4voO@cluster0.5nhycy3.mongodb.net/";
+  const MONGO_URI = process.env.MONGO_URI;
+  if (!MONGO_URI) {
+    console.error('ERROR: MONGO_URI not found in .env file');
+    process.exit(1);
+  }
   
   try {
     await mongoose.connect(MONGO_URI, { dbName: 'bmp' });
