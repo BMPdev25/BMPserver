@@ -34,7 +34,8 @@ const scheduleReminders = () => {
             booking.devoteeId,
             booking._id,
             'Upcoming Puja Tomorrow',
-            `Your booking for ${booking.ceremonyName} is scheduled for tomorrow at ${booking.time}.`
+            `Your booking for ${booking.ceremonyName} is scheduled for tomorrow at ${booking.time}.`,
+            'devotee'
           );
           
           // Notify Priest
@@ -42,7 +43,8 @@ const scheduleReminders = () => {
             booking.priestId,
             booking._id,
             'Upcoming Puja Tomorrow',
-            `You have a ${booking.ceremonyName} scheduled tomorrow at ${booking.time}.`
+            `You have a ${booking.ceremonyName} scheduled tomorrow at ${booking.time}.`,
+            'priest'
           );
         }
 
@@ -53,7 +55,8 @@ const scheduleReminders = () => {
             booking.devoteeId,
             booking._id,
             'Puja Starting Soon',
-            `Your ${booking.ceremonyName} is starting in 2 hours.`
+            `Your ${booking.ceremonyName} is starting in 2 hours.`,
+            'devotee'
           );
           
           // Notify Priest
@@ -61,7 +64,8 @@ const scheduleReminders = () => {
             booking.priestId,
             booking._id,
             'Puja Starting Soon',
-            `Your ${booking.ceremonyName} is starting in 2 hours.`
+            `Your ${booking.ceremonyName} is starting in 2 hours.`,
+            'priest'
           );
         }
       }
@@ -71,7 +75,7 @@ const scheduleReminders = () => {
   });
 };
 
-const sendReminder = async (userId, relatedId, title, message) => {
+const sendReminder = async (userId, relatedId, title, message, targetRole) => {
   try {
     // Check if notification already exists to prevent duplicate spam within the same hour
     const existing = await Notification.findOne({
@@ -87,6 +91,7 @@ const sendReminder = async (userId, relatedId, title, message) => {
         title,
         message,
         type: 'reminder',
+        targetRole,
         relatedId,
       });
     }

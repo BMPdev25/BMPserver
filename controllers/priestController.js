@@ -371,7 +371,7 @@ exports.getNotifications = async (req, res) => {
     const { limit = 50, unreadOnly = false } = req.query;
     const priestId = req.query.priestId;
 
-    const query = { userId: priestId };
+    const query = { userId: priestId, targetRole: 'priest' };
     if (unreadOnly === "true") {
       query.read = false;
     }
@@ -396,7 +396,7 @@ exports.markNotificationAsRead = async (req, res) => {
     const priestId = req.user.id;
 
     const notification = await Notification.findOneAndUpdate(
-      { _id: notificationId, userId: priestId },
+      { _id: notificationId, userId: priestId, targetRole: 'priest' },
       { read: true, updatedAt: new Date() },
       { new: true }
     );
@@ -422,7 +422,7 @@ exports.markAllNotificationsAsRead = async (req, res) => {
     const priestId = req.user.id;
 
     await Notification.updateMany(
-      { userId: priestId, read: false },
+      { userId: priestId, read: false, targetRole: 'priest' },
       { read: true, updatedAt: new Date() }
     );
 
@@ -535,6 +535,7 @@ exports.updateBookingStatus = async (req, res) => {
         title: notificationTitle,
         message: notificationMessage,
         type: notificationType,
+        targetRole: "devotee",
         relatedId: booking._id,
       });
 
@@ -547,6 +548,7 @@ exports.updateBookingStatus = async (req, res) => {
             booking.ceremonyType
           } ceremony with ${booking.devoteeId?.name || "devotee"}.`,
           type: "payment",
+          targetRole: "priest",
           relatedId: booking._id,
         });
       }
@@ -905,6 +907,7 @@ exports.acceptInstantBooking = async (req, res) => {
         title: "Instant Booking Confirmed",
         message: `A priest has accepted your instant booking request for ${updatedBooking.ceremonyType}.`,
         type: "booking",
+        targetRole: "devotee",
         relatedId: updatedBooking._id,
       });
     } catch (notifErr) {

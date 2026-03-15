@@ -20,6 +20,11 @@ const notificationSchema = new mongoose.Schema({
     enum: ['booking', 'payment', 'reminder', 'general', 'withdrawal'],
     required: true,
   },
+  targetRole: {
+    type: String,
+    enum: ['priest', 'devotee'],
+    required: true,
+  },
   read: {
     type: Boolean,
     default: false,

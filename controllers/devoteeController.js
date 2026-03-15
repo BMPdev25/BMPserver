@@ -4,6 +4,8 @@ const PriestProfile = require("../models/priestProfile");
 const Booking = require("../models/booking");
 const Notification = require("../models/notification");
 const Review = require("../models/review");
+const Ceremony = require("../models/ceremony");
+const mongoose = require("mongoose");
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res) => {
@@ -53,8 +55,24 @@ exports.searchPriests = async (req, res) => {
     const filter = {};
 
     if (ceremony) {
-      // Legacy ceremony string search removed.
-      // TODO: Implement search by service/ceremonyId if needed
+      // Find the ceremony ID by name
+      const ceremonyDoc = await Ceremony.findOne({ 
+        name: new RegExp(ceremony, 'i'),
+        isActive: true 
+      }).select('_id').lean();
+      
+      if (ceremonyDoc) {
+        filter['services.ceremonyId'] = ceremonyDoc._id;
+      } else {
+        // If ceremony not found, we should probably return no results 
+        // because the filter requested something non-existent
+        return res.status(200).json({
+          priests: [],
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalPriests: 0,
+        });
+      }
     }
 
     // BUG-10 FIX: 'userId.location.city' cannot be queried via Mongoose populate dot-notation.
@@ -75,6 +93,9 @@ exports.searchPriests = async (req, res) => {
     if (minRating) {
       filter['ratings.average'] = { $gte: parseFloat(minRating) };
     }
+
+    // NEW: Always filter by availability status 'available'
+    filter['currentAvailability.status'] = 'available';
 
     // If search term is provided, we need to find matching users first (by name)
     // and then add them to the priest filter
@@ -158,6 +179,15 @@ exports.getPriestDetails = async (req, res) => {
   try {
     const { priestId } = req.params;
     console.log("devoteeController: getPriestDetails for priestId:", priestId);
+
+    // Validate priestId to prevent CastError
+    if (!priestId || priestId === "undefined" || !mongoose.isValidObjectId(priestId)) {
+      console.warn("Invalid priestId provided:", priestId);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priest ID provided"
+      });
+    }
 
       // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
@@ -373,7 +403,7 @@ exports.createBooking = async (req, res) => {
       ...req.body,
       priestId: userPriestId, // Use the User ID for the priest
       devoteeId,
-      status: req.body.paymentStatus === "completed" ? "confirmed" : "pending",
+      status: req.body.status || "requested", // Respect frontend status (or default to requested)
       paymentStatus: req.body.paymentStatus || "pending",
       basePrice: finalBasePrice, // Use the calculated price
     };
@@ -396,6 +426,7 @@ exports.createBooking = async (req, res) => {
           req.body.date
         ).toLocaleDateString()} at ${req.body.startTime}.`,
         type: "booking",
+        targetRole: "priest",
         relatedId: savedBooking._id,
       });
     } catch (notificationError) {
@@ -466,7 +497,7 @@ exports.getNotifications = async (req, res) => {
     const { limit = 50, unreadOnly = false } = req.query;
     const devoteeId = req.user.id;
 
-    const query = { userId: devoteeId };
+    const query = { userId: devoteeId, targetRole: 'devotee' };
     if (unreadOnly === "true") {
       query.read = false;
     }
@@ -490,8 +521,12 @@ exports.markNotificationAsRead = async (req, res) => {
     const { notificationId } = req.params;
     const devoteeId = req.user.id;
 
+    if (!notificationId || !mongoose.isValidObjectId(notificationId)) {
+      return res.status(400).json({ message: "Invalid notification ID" });
+    }
+
     const notification = await Notification.findOneAndUpdate(
-      { _id: notificationId, userId: devoteeId },
+      { _id: notificationId, userId: devoteeId, targetRole: 'devotee' },
       { read: true, updatedAt: new Date() },
       { new: true }
     );
@@ -517,7 +552,7 @@ exports.markAllNotificationsAsRead = async (req, res) => {
     const devoteeId = req.user.id;
 
     await Notification.updateMany(
-      { userId: devoteeId, read: false },
+      { userId: devoteeId, read: false, targetRole: 'devotee' },
       { read: true, updatedAt: new Date() }
     );
 
@@ -581,6 +616,10 @@ exports.updateAddress = async (req, res) => {
     const { addressId } = req.params;
     const updateData = req.body;
     
+    if (!addressId || !mongoose.isValidObjectId(addressId)) {
+      return res.status(400).json({ message: "Invalid address ID" });
+    }
+    
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -617,6 +656,9 @@ exports.updateAddress = async (req, res) => {
 exports.deleteAddress = async (req, res) => {
   try {
     const { addressId } = req.params;
+    if (!addressId || !mongoose.isValidObjectId(addressId)) {
+        return res.status(400).json({ message: "Invalid address ID" });
+    }
     const user = await User.findById(req.user.id);
     
     if (!user) {

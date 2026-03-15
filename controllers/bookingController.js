@@ -367,6 +367,7 @@ const updateBookingStatus = async (req, res) => {
     // BUG-3 FIX: State-machine guard — enforce valid transitions
     const VALID_TRANSITIONS = {
       pending:   ['confirmed', 'cancelled'],
+      requested: ['confirmed', 'cancelled'],
       confirmed: ['arrived', 'cancelled'],
       arrived:   ['in_progress', 'cancelled'],
       in_progress: ['completed', 'cancelled'],
@@ -452,6 +453,7 @@ const updateBookingStatus = async (req, res) => {
                 title: 'Request No Longer Available',
                 message: `The request for ${otherBooking.ceremonyType} on ${new Date(otherBooking.date).toLocaleDateString('en-IN')} at ${otherBooking.startTime} has been cancelled because the devotee's slot was filled by another priest.`,
                 type: 'booking',
+                targetRole: 'priest',
                 relatedId: otherBooking._id,
               });
             } catch (notifErr) {
@@ -497,6 +499,7 @@ const updateBookingStatus = async (req, res) => {
           title,
           message,
           type: 'booking',
+          targetRole: 'devotee',
           relatedId: booking._id,
         });
       }
@@ -892,6 +895,7 @@ const cancelBookingByDevotee = async (req, res) => {
         title: 'Booking Cancelled ❌',
         message: `The devotee has cancelled the ${booking.ceremonyType} booking for ${bookingDate.toLocaleDateString('en-IN')}. Reason: ${reason || 'Not specified'}.`,
         type: 'booking',
+        targetRole: 'priest',
         relatedId: booking._id,
       });
     } catch (notifErr) {

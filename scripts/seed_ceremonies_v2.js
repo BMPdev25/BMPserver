@@ -14,7 +14,13 @@ const ceremonies = [
     pricing: { basePrice: 1100, priceRange: { min: 1100, max: 2100 }, factors: [] },
     religiousTraditions: ["Hindu"],
     images: [{ url: "/public/images/ceremonies/deity_puja.png", alt: "Ganesh Puja Setup", isPrimary: true }],
-    requirements: { materials: [{ name: "Modak", quantity: "21", isOptional: false }] }
+    requirements: { materials: [{ name: "Modak", quantity: "21", isOptional: false }] },
+    ritualSteps: [
+      { stepNumber: 1, title: "Ganapati Avahana", description: "Invoking Lord Ganesha and establishing the kalash.", durationEstimate: 10 },
+      { stepNumber: 2, title: "Shodashopachara Puja", description: "Performing the 16 steps of worship including Abhishekam and Archana.", durationEstimate: 20 },
+      { stepNumber: 3, title: "Ganesha Atharvashirsha", description: "Recitation of the sacred Ganesha Atharvashirsha hymns.", durationEstimate: 15 },
+      { stepNumber: 4, title: "Aarti & Pushpanjali", description: "Concluding with the offering of light and flowers.", durationEstimate: 10 }
+    ]
   },
   {
     name: "Lakshmi Puja",
@@ -25,7 +31,13 @@ const ceremonies = [
     pricing: { basePrice: 2100, priceRange: { min: 2100, max: 5100 }, factors: [] },
     religiousTraditions: ["Hindu"],
     images: [{ url: "/public/images/ceremonies/deity_puja.png", alt: "Lakshmi Puja Setup", isPrimary: true }],
-    requirements: { materials: [{ name: "Lotus Flowers", quantity: "5", isOptional: true }] }
+    requirements: { materials: [{ name: "Lotus Flowers", quantity: "5", isOptional: true }] },
+    ritualSteps: [
+      { stepNumber: 1, title: "Lakshmi Avahana", description: "Invoking Goddess Lakshmi and Establishing the main deity.", durationEstimate: 10 },
+      { stepNumber: 2, title: "Panchamrut Abhishekam", description: "Sacred bath using milk, curd, ghee, honey, and sugar.", durationEstimate: 20 },
+      { stepNumber: 3, title: "Lakshmi Ashtottara Shatanamavali", description: "Chanting of the 108 names of Goddess Lakshmi.", durationEstimate: 15 },
+      { stepNumber: 4, title: "Deepa Puja & Aarti", description: "Offering of lamps and final prayers for prosperity.", durationEstimate: 15 }
+    ]
   },
   {
     name: "Saraswati Puja",

@@ -25,7 +25,11 @@ const PriestServiceSchema = new mongoose.Schema({
   customSteps: [{
     title: String,
     description: String,
-    durationEstimate: Number
+    durationEstimate: Number,
+    additionalCharge: {
+      type: Number,
+      default: 0
+    }
   }],
 }, { _id: false });
 
