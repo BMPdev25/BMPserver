@@ -21,7 +21,8 @@ exports.updateProfile = async (req, res) => {
       priceList,
       availability,
       services,
-      location
+      location,
+      address
     } = req.body;
 
     console.log('DEBUG: Priest Update Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
@@ -42,6 +43,7 @@ exports.updateProfile = async (req, res) => {
     if (availability) updateData.availability = availability;
     if (services) updateData.services = services;
     if (location) updateData.location = location;
+    if (address) updateData.address = address;
 
     if (profile) {
       profile = await PriestProfile.findOneAndUpdate(
@@ -782,10 +784,15 @@ exports.uploadDocument = async (req, res) => {
 
     await profile.save();
 
-    res.status(200).json({ 
-      message: "Document uploaded successfully", 
-      documentId: profile.verificationDocuments[profile.verificationDocuments.length - 1]._id 
-    });
+    const responsePayload = { message: "Document uploaded successfully" };
+    if (documentType !== 'profile_picture') {
+        const savedDoc = profile.verificationDocuments.find(d => d.type === documentType);
+        if (savedDoc) {
+            responsePayload.documentId = savedDoc._id;
+        }
+    }
+
+    res.status(200).json(responsePayload);
 
   } catch (error) {
     console.error("Upload document error:", error);
@@ -859,6 +866,7 @@ exports.submitVerification = async (req, res) => {
       sampradaya, 
       services, 
       location,
+      address,
       languagesSpoken // if updated from user level
     } = req.body;
 
@@ -873,6 +881,16 @@ exports.submitVerification = async (req, res) => {
     if (sampradaya !== undefined) profile.sampradaya = sampradaya;
     if (services !== undefined) profile.services = services;
     if (location !== undefined) profile.location = location;
+    if (address !== undefined) {
+      if (typeof address === 'string') {
+        profile.address = { ...profile.address, fullAddress: address };
+      } else {
+        profile.address = {
+          ...profile.address,
+          ...address
+        };
+      }
+    }
 
     // Set status to pending
     profile.verificationStatus = 'pending';
@@ -1003,23 +1021,23 @@ exports.getProfileCompletion = async (req, res) => {
       basicInfo: !!(user.name && user.email && user.phone),
       languages: user.languagesSpoken && user.languagesSpoken.length > 0,
       profilePicture: !!priestProfile.profilePicture,
-      description: !!priestProfile.description && priestProfile.description.length > 20,
+      description: !!priestProfile.description && priestProfile.description.length >= 20,
       experience: priestProfile.experience !== undefined && priestProfile.experience >= 0,
+      religiousTradition: !!priestProfile.religiousTradition,
+      address: !!(priestProfile.address?.street && priestProfile.address?.town),
       services: priestProfile.services && priestProfile.services.length > 0,
-      location: priestProfile.location && priestProfile.location.coordinates && 
-                priestProfile.location.coordinates[0] !== 0 && 
-                priestProfile.location.coordinates[1] !== 0,
       documents: priestProfile.verificationDocuments && priestProfile.verificationDocuments.length > 0,
     };
 
     const weights = {
       basicInfo: 10,
       languages: 10,
-      profilePicture: 15,
+      profilePicture: 10,
       description: 10,
       experience: 10,
-      services: 20,
-      location: 15,
+      religiousTradition: 10,
+      address: 15,
+      services: 15,
       documents: 10,
     };
 

@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema({
   },
   userType: {
     type: String,
-    enum: ['priest', 'devotee'],
+    enum: ['priest', 'devotee', 'admin'],
     required: true,
   },
   isActive: {

@@ -21,6 +21,7 @@ const languageRoutes = require('./routes/languageRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { scheduleReminders } = require('./jobs/cronJobs');
 
 // Load environment variables
@@ -102,6 +103,7 @@ app.use('/api/languages', languageRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/metadata', metadataRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Dev-Only Test Fixtures for Maestro (Protected internally by NODE_ENV)
 app.use('/api/test', require('./routes/testFixtures'));

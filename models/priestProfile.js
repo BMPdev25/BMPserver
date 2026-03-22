@@ -62,6 +62,16 @@ const priestProfileSchema = new mongoose.Schema({
     },
   },
 
+  address: {
+    houseNo: String,
+    street: String,
+    town: String,
+    state: String,
+    country: String,
+    pincode: String,
+    fullAddress: String,
+  },
+
   serviceRadiusKm: {
     type: Number,
     default: 10
