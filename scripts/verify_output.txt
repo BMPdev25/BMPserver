@@ -1,0 +1,56 @@
+﻿Connected to MongoDB
+
+Total bookings: 10
+
+--- Booking 69b2a4d7cc362c44850e0a44 ---
+  ceremonyType: Ganesh Puja
+  puja: (not set)
+  Strategy: ceremonyType lookup
+  Γ£à MATCH: "Ganesh Puja" ΓåÆ 14 materials, 4 steps
+--- Booking 69afd19307d99b7b29ed20be ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fd
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69af055ad79fbf351bd84593 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fe
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69aefbb18000071c44bbb981 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fd
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69acce59b3a5c6890dce17e4 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b562a02
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69ac822d15cb7bd8ed3d45be ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fe
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69ac81161a6a04c1cf2c0295 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fe
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69ac7f650dd0596cdf71e5f8 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fd
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69ac7d691affad9b2d18d1c0 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b562a00
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+--- Booking 69ac7c540b34fce1f7eb9587 ---
+  ceremonyType: (not set)
+  puja: 69ac65240119aee34b5629fe
+  Strategy: puja ObjectId lookup
+  Γ¥î NO MATCH - no ceremony found via either strategy
+
+Done.

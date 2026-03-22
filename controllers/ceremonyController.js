@@ -1,4 +1,5 @@
 const Ceremony = require("../models/ceremony");
+const Category = require("../models/ceremonyCategory");
 
 // Get all ceremonies (with search & pagination)
 exports.getAllCeremonies = async (req, res) => {
@@ -16,16 +17,17 @@ exports.getAllCeremonies = async (req, res) => {
     }
 
     const ceremoniesDocs = await Ceremony.find(filter)
+      .select("name description category subcategory duration pricing images statistics tags religiousTraditions isActive isFeatured")
       .sort(query ? { score: { $meta: "textScore" } } : { "statistics.popularityScore": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
       .exec();
 
     const ceremonies = ceremoniesDocs.map(c => {
-        const doc = c.toObject();
-        const primaryImage = c.images.find(img => img.isPrimary) || c.images[0];
-        doc.image = primaryImage ? primaryImage.url : null;
-        return doc;
+        const primaryImage = c.images?.find(img => img.isPrimary) || c.images?.[0];
+        c.image = primaryImage ? primaryImage.url : null;
+        return c;
     });
 
     const count = await Ceremony.countDocuments(filter);
@@ -87,9 +89,7 @@ exports.searchCeremonies = async (req, res) => {
 // Get all categories
 exports.getCategories = async (req, res) => {
   try {
-    // Return distinct categories from DB or hardcoded list if preferred
-    // Using distinct from DB ensures we only show what we have
-    const categories = await Ceremony.distinct("category", { isActive: true });
+    const categories = await Category.find({ isActive: true }).sort({ order: 1 });
     res.status(200).json(categories);
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -102,7 +102,10 @@ exports.getCeremoniesByCategory = async (req, res) => {
   try {
     const { category } = req.params;
     const ceremonies = await Ceremony.find({ category, isActive: true });
-    res.status(200).json(ceremonies);
+    res.status(200).json({
+      ceremonies,
+      total: ceremonies.length
+    });
   } catch (error) {
     console.error("Error fetching ceremonies by category:", error);
     res.status(500).json({ message: "Server Error" });

@@ -8,6 +8,13 @@ exports.register = async (req, res) => {
   try {
     const { name, email, phone, password, userType, languagesSpoken } = req.body;
     
+    // Basic validation to prevent 500 errors from empty frontend states
+    if (!name || (!email && !phone) || !password || !userType) {
+      return res.status(400).json({
+        message: 'Name, password, userType, and either email or phone are required.'
+      });
+    }
+
     // Validate languagesSpoken for priests
     if (userType === 'priest') {
       if (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0) {
@@ -113,12 +120,23 @@ exports.login = async (req, res) => {
   try {
     const { identifier, password } = req.body;
 
-    // Find user by phone OR email
+    // Find user by phone OR email, STRICTLY matching the requested userType
     const user = await User.findOne({
-      $or: [{ phone: identifier }, { email: identifier }]
+      $or: [{ phone: identifier }, { email: identifier }],
+      userType: req.body.userType // Add userType to the query
     }).populate('languagesSpoken');
 
     if (!user) {
+      // Check if they exist with a different role to provide a better error message
+      const wrongRoleUser = await User.findOne({
+        $or: [{ phone: identifier }, { email: identifier }]
+      });
+      
+      if (wrongRoleUser) {
+         return res.status(403).json({ 
+           message: `Account exists, but is registered as a ${wrongRoleUser.userType}. Please switch roles or create a new account.` 
+         });
+      }
       return res.status(401).json({ message: 'No user found' });
     }
 
@@ -259,6 +277,31 @@ exports.firebaseLogin = async (req, res) => {
   } catch (error) {
     console.error('Firebase login error:', error);
     res.status(500).json({ message: 'Server error during firebase login' });
+  }
+};
+
+// Store Expo Push Token
+exports.savePushToken = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { pushToken } = req.body;
+
+    if (!pushToken) {
+      return res.status(400).json({ message: 'Push token is required' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    user.expoPushToken = pushToken;
+    await user.save();
+
+    res.status(200).json({ message: 'Push token saved successfully' });
+  } catch (error) {
+    console.error('Save push token error:', error);
+    res.status(500).json({ message: 'Server error saving push token', error: error.message });
   }
 };
 

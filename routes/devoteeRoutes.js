@@ -1,6 +1,8 @@
 // routes/devoteeRoutes.js
 const express = require('express');
 const devoteeController = require('../controllers/devoteeController');
+const bookingController = require('../controllers/bookingController');
+const reviewController = require('../controllers/reviewController');
 const { protect, devoteeOnly } = require('../middleware/authMiddleware');
 
 const router = express.Router();
@@ -9,10 +11,14 @@ const router = express.Router();
 router.get('/priests/all', devoteeController.getAllPriests);
 router.get('/priests', devoteeController.searchPriests);
 router.get('/priests/:priestId', devoteeController.getPriestDetails);
+router.get('/priests/:priestId/reviews', reviewController.getUserReviews);
 
 // Protected routes (need authentication and devotee role)
 router.get('/bookings', protect, devoteeOnly, devoteeController.getBookings);
 router.post('/bookings', protect, devoteeOnly, devoteeController.createBooking);
+router.post('/bookings/instant', protect, devoteeOnly, devoteeController.bookInstantCeremony);
+router.get('/bookings/:bookingId', protect, devoteeOnly, bookingController.getBookingDetails);
+router.get('/pending-actions', protect, devoteeOnly, devoteeController.getPendingActions);
 
 // Add devotee profile update route
 router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);

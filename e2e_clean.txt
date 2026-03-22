@@ -1,0 +1,37 @@
+
+🕉️  Sacred Connect — E2E Booking Flow Test
+
+
+──── Step 1: Login as devotee ────
+  ✅  Logged in as devotee: Rohan Gupta (ID: 6947dee15cbd57f36d6a1ba4)
+
+──── Step 2: Find an available priest ────
+  ✅  Found priest: Pandit Sharma (Profile ID: 6947dee15cbd57f36d6a1bb2)
+
+──── Step 3: Create booking (devotee → priest) ────
+  ✅  Booking created! ID: 6999f22979d3c8b0843fcd69, Status: pending, Priest UserID: 6947dee15cbd57f36d6a1bae
+  ✅  Booking status is correctly 'pending'
+
+──── Step 4: Login as priest ────
+  ✅  Logged in as priest: Pandit Sharma
+
+──── Step 5: Priest sees the pending booking ────
+  ✅  Booking 6999f22979d3c8b0843fcd69 found in priest's list with status: pending
+
+──── Step 6: Priest accepts the booking ────
+  ✅  Booking accepted! New status: undefined
+  ❌  Expected status 'confirmed', got 'undefined'
+
+──── Step 7: Devotee sees confirmed booking ────
+  ✅  Booking shows 'confirmed' status for devotee ✓
+
+──── Step 8: Devotee notification — "Booking Accepted" ────
+  ✅  Notification found: "Booking Accepted 🎉" — Pandit Sharma has accepted your Satyanarayan Puja request! Date: 24/2/2026.
+
+──── Step 9: Test REJECT flow ────
+  ✅  Second booking created: 6999f22b79d3c8b0843fcd93
+  ✅  Second booking rejected! Status: undefined
+  ✅  Decline notification found: "Booking Declined" — Pandit Sharma has declined your Satyanarayan Puja request. Please try booking another available priest.
+
+🏁  E2E Test Complete
+

@@ -10,11 +10,13 @@ const bookingSchema = new mongoose.Schema({
   priestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    // Required except for instant booking in 'searching' phase
+    required: function() { return this.status !== 'searching'; },
   },
   ceremonyType: {
     type: String,
     required: true,
+    maxlength: [100, 'Ceremony type cannot exceed 100 characters'],
   },
   date: {
     type: Date,
@@ -37,11 +39,23 @@ const bookingSchema = new mongoose.Schema({
       type: String,
       required: true,
     },
+    coordinates: {
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: [Number], // [lng, lat]
+    }
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'completed', 'cancelled'],
+    enum: ['pending', 'searching', 'requested', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'expired'],
     default: 'pending',
+  },
+  bookingType: {
+    type: String,
+    enum: ['scheduled', 'instant'],
+    default: 'scheduled',
+  },
+  expiryTime: {
+    type: Date,
   },
   basePrice: {
     type: Number,
@@ -169,6 +183,10 @@ const bookingSchema = new mongoose.Schema({
       return 'completed';
     },
   },
+  isTestRecord: {
+    type: Boolean,
+    default: false
+  }
 });
 
 // Create indexes for better query performance

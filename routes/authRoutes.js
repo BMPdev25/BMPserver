@@ -12,4 +12,9 @@ router.post('/login', authController.login);
 // Firebase login
 router.post('/firebase-login', authController.firebaseLogin);
 
+const { protect } = require('../middleware/authMiddleware');
+
+// Save Expo push token
+router.post('/push-token', protect, authController.savePushToken);
+
 module.exports = router;
