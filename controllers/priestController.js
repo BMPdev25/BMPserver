@@ -849,6 +849,51 @@ exports.getDocument = async (req, res) => {
   }
 };
 
+// Submit priest verification application
+exports.submitVerification = async (req, res) => {
+  try {
+    const priestId = req.user.id;
+    const { 
+      experience, 
+      description, 
+      sampradaya, 
+      services, 
+      location,
+      languagesSpoken // if updated from user level
+    } = req.body;
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    // Update profile data
+    if (experience !== undefined) profile.experience = experience;
+    if (description !== undefined) profile.description = description;
+    if (sampradaya !== undefined) profile.sampradaya = sampradaya;
+    if (services !== undefined) profile.services = services;
+    if (location !== undefined) profile.location = location;
+
+    // Set status to pending
+    profile.verificationStatus = 'pending';
+    
+    await profile.save();
+
+    // Optionally update user level languages if provided
+    if (languagesSpoken && Array.isArray(languagesSpoken)) {
+      await User.findByIdAndUpdate(priestId, { languagesSpoken });
+    }
+
+    res.status(200).json({ 
+      message: "Verification application submitted successfully",
+      status: 'pending'
+    });
+  } catch (error) {
+    console.error("Submit verification error:", error);
+    res.status(500).json({ message: "Server error while submitting verification" });
+  }
+};
+
 // Accept an instant booking request
 exports.acceptInstantBooking = async (req, res) => {
   try {
@@ -927,6 +972,7 @@ exports.acceptInstantBooking = async (req, res) => {
 exports.getProfileCompletion = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`[DEBUG] getProfileCompletion for user: ${userId}`);
     const user = await User.findById(userId).populate('languagesSpoken');
     
     if (!user) {
@@ -948,6 +994,7 @@ exports.getProfileCompletion = async (req, res) => {
         verificationDocuments: [],
         templesAffiliated: []
       });
+      console.log(`[DEBUG] Creating new profile for user: ${userId}`);
       await priestProfile.save();
     }
 
@@ -1007,7 +1054,10 @@ exports.getProfileCompletion = async (req, res) => {
       canAcceptRequests: completionPercentage >= 80 && hasVerifiedDocs,
     });
   } catch (error) {
-    console.error('Error calculating profile completion:', error);
-    res.status(500).json({ message: 'Server error while calculating profile completion' });
+    console.error('❌ Error in getProfileCompletion:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error while calculating profile completion' 
+    });
   }
 };

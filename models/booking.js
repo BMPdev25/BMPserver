@@ -183,6 +183,10 @@ const bookingSchema = new mongoose.Schema({
       return 'completed';
     },
   },
+  isTestRecord: {
+    type: Boolean,
+    default: false
+  }
 });
 
 // Create indexes for better query performance

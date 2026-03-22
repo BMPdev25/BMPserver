@@ -23,10 +23,13 @@ async function recalculateReliability(priestUserId) {
   const total = completed + cancelled;
   const completionRate = total === 0 ? 100 : Math.round((completed / total) * 100);
 
-  // Persist to PriestProfile.analytics.completionRate
+  // Persist to PriestProfile
   await PriestProfile.findOneAndUpdate(
     { userId: priestUserId },
-    { 'analytics.completionRate': completionRate },
+    { 
+      'analytics.completionRate': completionRate,
+      'cancelledCount': cancelled 
+    },
     { new: true }
   );
 

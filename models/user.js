@@ -137,6 +137,10 @@ const userSchema = new mongoose.Schema({
     cancellationCount: { type: Number, default: 0 },
     lateCancellationCount: { type: Number, default: 0 },
     completedCount: { type: Number, default: 0 }
+  },
+  isTestRecord: {
+    type: Boolean,
+    default: false
   }
 });
 

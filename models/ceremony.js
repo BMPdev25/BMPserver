@@ -12,6 +12,9 @@ const ceremonySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  history: {
+    type: String, // Cultural/religious background and significance
+  },
   category: {
     type: String,
     required: true,

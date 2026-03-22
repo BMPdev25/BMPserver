@@ -144,7 +144,9 @@ exports.searchPriests = async (req, res) => {
       profilePicture: priest.profilePicture,
       rating: priest.ratings, // Map to singular 'rating'
       ratings: priest.ratings,
-      ceremonyCount: priest.ceremonyCount,
+      ceremonyCount: priest.ceremonyCount || 0,
+      cancelledCount: priest.cancelledCount || 0,
+      noShowCount: priest.noShowCount || 0,
       location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
@@ -271,7 +273,9 @@ exports.getPriestDetails = async (req, res) => {
           "Satyanarayan Katha": 11000,
           default: 8000,
         },
-        ceremonyCount: priest.ceremonyCount || 100,
+        ceremonyCount: priest.ceremonyCount || 0,
+        cancelledCount: priest.cancelledCount || 0,
+        noShowCount: priest.noShowCount || 0,
         completionRate: priest.analytics?.completionRate ?? 100,
       };
       

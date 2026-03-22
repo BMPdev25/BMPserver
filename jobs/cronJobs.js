@@ -19,7 +19,7 @@ const scheduleReminders = () => {
         // Create a moment object for the booking start time
         // Assuming time is in "HH:MM AM/PM" or "HH:MM" format
         const bookingDateTime = moment(
-          `${moment(booking.date).format('YYYY-MM-DD')} ${booking.time}`,
+          `${moment(booking.date).format('YYYY-MM-DD')} ${booking.startTime}`,
           ['YYYY-MM-DD HH:mm A', 'YYYY-MM-DD HH:mm']
         );
 
@@ -34,7 +34,7 @@ const scheduleReminders = () => {
             booking.devoteeId,
             booking._id,
             'Upcoming Puja Tomorrow',
-            `Your booking for ${booking.ceremonyName} is scheduled for tomorrow at ${booking.time}.`,
+            `Your booking for ${booking.ceremonyType} is scheduled for tomorrow at ${booking.startTime}.`,
             'devotee'
           );
           
@@ -43,7 +43,7 @@ const scheduleReminders = () => {
             booking.priestId,
             booking._id,
             'Upcoming Puja Tomorrow',
-            `You have a ${booking.ceremonyName} scheduled tomorrow at ${booking.time}.`,
+            `You have a ${booking.ceremonyType} scheduled tomorrow at ${booking.startTime}.`,
             'priest'
           );
         }
@@ -55,7 +55,7 @@ const scheduleReminders = () => {
             booking.devoteeId,
             booking._id,
             'Puja Starting Soon',
-            `Your ${booking.ceremonyName} is starting in 2 hours.`,
+            `Your ${booking.ceremonyType} is starting in 2 hours.`,
             'devotee'
           );
           
@@ -64,7 +64,7 @@ const scheduleReminders = () => {
             booking.priestId,
             booking._id,
             'Puja Starting Soon',
-            `Your ${booking.ceremonyName} is starting in 2 hours.`,
+            `Your ${booking.ceremonyType} is starting in 2 hours.`,
             'priest'
           );
         }

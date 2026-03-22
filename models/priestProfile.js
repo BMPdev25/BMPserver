@@ -113,7 +113,18 @@ const priestProfileSchema = new mongoose.Schema({
   },
 
   ceremonyCount: { type: Number, default: 0 },
+  cancelledCount: { type: Number, default: 0 },
+  noShowCount: { type: Number, default: 0 },
   isVerified: { type: Boolean, default: false },
+  
+  // Phase 11: Onboarding & Verification
+  verificationStatus: { 
+    type: String, 
+    enum: ['incomplete', 'pending', 'approved', 'rejected'], 
+    default: 'incomplete' 
+  },
+  rejectionReason: String,
+  sampradaya: String,
 
   // Real-time status
   currentAvailability: {

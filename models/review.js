@@ -43,6 +43,10 @@ const reviewSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  isTestRecord: {
+    type: Boolean,
+    default: false
+  }
 });
 
 // Ensure a user can only review a booking once per role

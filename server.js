@@ -103,6 +103,9 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/metadata', metadataRoutes);
 
+// Dev-Only Test Fixtures for Maestro (Protected internally by NODE_ENV)
+app.use('/api/test', require('./routes/testFixtures'));
+
 // Connect to MongoDB and Start Server only if run directly
 if (require.main === module) {
   mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' })
@@ -110,9 +113,8 @@ if (require.main === module) {
     .catch(err => console.error('MongoDB connection error:', err));
 
   const PORT = process.env.PORT || 5000;
-  // const HOST = '0.0.0.0'; 
-  server.listen(PORT, () => {
-    console.log(`Server running on localhost:${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on 0.0.0.0:${PORT}`);
     console.log('Socket.IO enabled for real-time features');
   });
 }

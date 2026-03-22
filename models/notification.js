@@ -54,8 +54,14 @@ notificationSchema.pre('save', function(next) {
   next();
 });
 
-const { Expo } = require('expo-server-sdk');
-let expo = new Expo();
+const ExpoSDK = require('expo-server-sdk');
+const Expo = ExpoSDK.Expo || ExpoSDK.default?.Expo || ExpoSDK;
+let expo;
+try {
+  expo = new Expo();
+} catch (err) {
+  console.error('Failed to initialize Expo SDK:', err.message);
+}
 
 // Helper method to create notifications
 notificationSchema.statics.createNotification = async function(data) {

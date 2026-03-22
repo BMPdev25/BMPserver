@@ -1,0 +1,42 @@
+[
+  {
+    "_id": "69ac65240119aee34b5629fd",
+    "name": "Archana"
+  },
+  {
+    "_id": "69ac65240119aee34b5629fe",
+    "name": "Abhishekam"
+  },
+  {
+    "_id": "69ac65240119aee34b5629ff",
+    "name": "Hanuman Puja"
+  },
+  {
+    "_id": "69ac65240119aee34b562a00",
+    "name": "Sai Baba Puja"
+  },
+  {
+    "_id": "69ac65240119aee34b562a01",
+    "name": "Navagraha Shanti Puja"
+  },
+  {
+    "_id": "69ac65240119aee34b562a02",
+    "name": "Dhanvantari Puja"
+  },
+  {
+    "_id": "69ac65240119aee34b562a03",
+    "name": "Shanti Homam"
+  },
+  {
+    "_id": "69ac65240119aee34b562a04",
+    "name": "Griha Pravesh"
+  },
+  {
+    "_id": "69ac65240119aee34b562a05",
+    "name": "Bhoomi Puja"
+  },
+  {
+    "_id": "69ac65240119aee34b562a06",
+    "name": "Naamkaran"
+  }
+]

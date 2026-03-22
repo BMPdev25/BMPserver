@@ -1,0 +1,26 @@
+{
+  "_id": "69afd19307d99b7b29ed20be",
+  "bookingId": "BMP-20260310-WHUD",
+  "puja": "69ac65240119aee34b5629fd",
+  "customerName": "Mrudhula",
+  "customerMobile": "9392827318",
+  "customerEmail": "subwaysurffers@gmail.com",
+  "address": {
+    "line1": "Begumpet",
+    "line2": "",
+    "city": "Hyderabad",
+    "pincode": "500016",
+    "landmark": ""
+  },
+  "preferredDate": "2026-03-20T00:00:00.000Z",
+  "preferredTime": "Late Morning (9-11 AM)",
+  "itemsDeliveryRequested": false,
+  "itemsDeliveryStatus": "not_applicable",
+  "assignedPujari": "69ac65250119aee34b562a15",
+  "status": "completed",
+  "adminNotes": "",
+  "cancellationReason": "",
+  "createdAt": "2026-03-10T08:08:51.228Z",
+  "updatedAt": "2026-03-10T08:12:35.931Z",
+  "__v": 0
+}
