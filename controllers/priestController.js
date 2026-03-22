@@ -2,7 +2,11 @@ const PriestProfile = require("../models/priestProfile");
 const User = require("../models/user");
 const Booking = require("../models/booking");
 const Transaction = require("../models/transaction");
+const Wallet = require("../models/wallet");
 const Notification = require("../models/notification");
+const Review = require("../models/review");
+const { processBookingCompletion, getOrCreateWallet } = require("../services/commissionEngine");
+const { recalculateReliability } = require("../utils/reliabilityEngine");
 
 // Create or update priest profile
 exports.updateProfile = async (req, res) => {
@@ -17,7 +21,8 @@ exports.updateProfile = async (req, res) => {
       priceList,
       availability,
       services,
-      location
+      location,
+      address
     } = req.body;
 
     console.log('DEBUG: Priest Update Body:', JSON.stringify(req.body, null, 2)); // DEBUG LOG
@@ -38,6 +43,7 @@ exports.updateProfile = async (req, res) => {
     if (availability) updateData.availability = availability;
     if (services) updateData.services = services;
     if (location) updateData.location = location;
+    if (address) updateData.address = address;
 
     if (profile) {
       profile = await PriestProfile.findOneAndUpdate(
@@ -58,6 +64,48 @@ exports.updateProfile = async (req, res) => {
   } catch (error) {
     console.error("Update priest profile error:", error);
     res.status(500).json({ message: "Server error while updating priest profile" });
+  }
+};
+
+
+// Toggle priest's real-time status (online/offline)
+exports.toggleStatus = async (req, res) => {
+  try {
+    const { status, autoToggle } = req.body;
+    const validStatuses = ['available', 'busy', 'offline'];
+
+    // BUG-5 FIX: Build $set payload and use findOneAndUpdate to avoid
+    // undefined sub-document path errors when currentAvailability is not initialized
+    const setPayload = { 'currentAvailability.lastUpdated': new Date() };
+
+    if (status) {
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+      }
+      setPayload['currentAvailability.status'] = status;
+    }
+
+    if (typeof autoToggle === 'boolean') {
+      setPayload['currentAvailability.autoToggle'] = autoToggle;
+    }
+
+    const profile = await PriestProfile.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: setPayload },
+      { new: true, upsert: false }
+    );
+
+    if (!profile) {
+      return res.status(404).json({ message: 'Profile not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      currentAvailability: profile.currentAvailability
+    });
+  } catch (error) {
+    console.error('Toggle status error:', error);
+    res.status(500).json({ message: 'Server error while updating status' });
   }
 };
 
@@ -139,83 +187,93 @@ exports.getBookings = async (req, res) => {
   }
 };
 
-// Get priest's earnings based on completed bookings
+// Get priest's earnings — reads from Wallet (single source of truth)
 exports.getEarnings = async (req, res) => {
   try {
-    const { priestId } = req.query;
-    const { period } = req.query;
+    const priestId = req.query.priestId || req.user?.id;
+
+    // Get or create wallet
+    const wallet = await getOrCreateWallet(priestId);
 
     // Calculate date ranges
     const now = new Date();
     const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-    // Get completed bookings for current month
-    const currentMonthBookings = await Booking.find({
-      priestId: priestId,
-      status: "completed",
-      completionDate: { $gte: currentMonth },
-    }).populate("devoteeId", "name");
+    // Get this month's credits from Transaction ledger
+    const thisMonthTxns = await Transaction.find({
+      priestId,
+      type: 'credit_for_booking',
+      status: 'completed',
+      createdAt: { $gte: currentMonth },
+    });
+    const thisMonthEarnings = thisMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
-    // Get completed bookings for last month
-    const lastMonthBookings = await Booking.find({
-      priestId: priestId,
-      status: "completed",
-      completionDate: { $gte: lastMonth, $lte: lastMonthEnd },
-    }).populate("devoteeId", "name");
+    // Get last month's credits
+    const lastMonthTxns = await Transaction.find({
+      priestId,
+      type: 'credit_for_booking',
+      status: 'completed',
+      createdAt: { $gte: lastMonth, $lte: lastMonthEnd },
+    });
+    const lastMonthEarnings = lastMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
-    // Calculate earnings
-    const thisMonthEarnings = currentMonthBookings.reduce((total, booking) => {
-      // Priest gets basePrice (platform keeps the platform fee)
-      return total + (booking.basePrice || 0);
-    }, 0);
-
-    const lastMonthEarnings = lastMonthBookings.reduce((total, booking) => {
-      return total + (booking.basePrice || 0);
-    }, 0);
-
-    // Calculate growth percentage
+    // Growth percentage
     let growthPercentage = 0;
     if (lastMonthEarnings > 0) {
-      growthPercentage =
-        ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings) * 100;
+      growthPercentage = ((thisMonthEarnings - lastMonthEarnings) / lastMonthEarnings) * 100;
     } else if (thisMonthEarnings > 0) {
-      growthPercentage = 100; // First month with earnings
+      growthPercentage = 100;
     }
 
-    // Get all transactions (completed bookings) sorted by date
-    const allCompletedBookings = await Booking.find({
-      priestId: priestId,
-      status: "completed",
-    })
-      .populate("devoteeId", "name")
-      .sort({ completionDate: -1 })
-      .limit(10); // Get latest 10 transactions
+    // Pujas completed this month
+    const pujasCompleted = await Booking.countDocuments({
+      priestId,
+      status: 'completed',
+      completionDate: { $gte: currentMonth },
+    });
 
-    // Format transactions
-    const transactions = allCompletedBookings.map((booking) => ({
-      id: booking._id,
-      amount: booking.basePrice,
-      type: "earnings",
-      date: booking.completionDate || booking.date,
-      description: booking.ceremonyType,
-      client: booking.devoteeId?.name || "Unknown Client",
-      status: "completed",
+    // Pujas pending this month
+    const pujasPending = await Booking.countDocuments({
+      priestId,
+      status: { $in: ['pending', 'confirmed'] },
+      date: { $gte: currentMonth, $lte: endOfMonth },
+    });
+
+    // Recent transactions (all types)
+    const transactions = await Transaction.find({ priestId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('bookingId', 'ceremonyType date devoteeId');
+
+    // Format transactions for frontend
+    const formattedTransactions = transactions.map((tx) => ({
+      id: tx._id,
+      amount: tx.amount,
+      type: tx.type,
+      direction: tx.direction,
+      date: tx.createdAt,
+      description: tx.description,
+      status: tx.status,
+      referenceId: tx.referenceId,
+      booking: tx.bookingId,
     }));
-
-    // Calculate available balance (for simplicity, using current month earnings)
-    // In a real app, this would be thisMonthEarnings minus any withdrawals
-    const availableBalance = thisMonthEarnings;
 
     const earnings = {
       thisMonth: thisMonthEarnings,
       lastMonth: lastMonthEarnings,
       growthPercentage: Math.round(growthPercentage * 100) / 100,
-      availableBalance: availableBalance,
-      transactions: transactions,
-      totalBookings: currentMonthBookings.length,
-      totalCompletedBookings: allCompletedBookings.length,
+      availableBalance: wallet.currentBalance,
+      totalCredited: wallet.totalCredited,
+      totalDebited: wallet.totalDebited,
+      transactions: formattedTransactions,
+      totalBookings: pujasCompleted,
+      totalCompletedBookings: pujasCompleted,
+      pujasCompleted,
+      pujasPending,
+      walletStatus: wallet.status,
     };
 
     res.status(200).json(earnings);
@@ -227,62 +285,59 @@ exports.getEarnings = async (req, res) => {
   }
 };
 
-// Request earnings withdrawal
+// Request earnings withdrawal — DEPRECATED, use POST /api/wallet/withdraw instead
+// Kept for backward compatibility, redirects to wallet controller logic
 exports.requestWithdrawal = async (req, res) => {
   try {
     const { amount, paymentMethod } = req.body;
     const priestId = req.user.id;
 
-    // Validate amount
     if (!amount || amount <= 0) {
-      return res.status(400).json({ message: "Invalid withdrawal amount" });
+      return res.status(400).json({ message: 'Invalid withdrawal amount' });
     }
 
-    // Get current available balance
-    const now = new Date();
-    const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const wallet = await getOrCreateWallet(priestId);
 
-    const currentMonthBookings = await Booking.find({
-      priestId: priestId,
-      status: "completed",
-      completionDate: { $gte: currentMonth },
-    });
+    if (wallet.status === 'frozen') {
+      return res.status(403).json({ message: 'Your wallet is currently frozen. Please contact support.' });
+    }
 
-    const availableBalance = currentMonthBookings.reduce((total, booking) => {
-      return total + (booking.basePrice || 0);
-    }, 0);
-
-    // Check if user has sufficient balance
-    if (amount > availableBalance) {
+    if (amount > wallet.currentBalance) {
       return res.status(400).json({
-        message: "Insufficient balance for withdrawal",
-        availableBalance: availableBalance,
+        message: 'Insufficient balance for withdrawal',
+        currentBalance: wallet.currentBalance,
       });
     }
 
-    // Create withdrawal transaction record
-    const transaction = new Transaction({
-      userId: priestId,
-      type: "withdrawal",
-      amount: amount,
-      status: "pending",
-      paymentMethod: paymentMethod,
-      description: "Earnings withdrawal request",
-      createdAt: new Date(),
-    });
+    // Deduct from wallet
+    wallet.currentBalance -= amount;
+    wallet.totalDebited += amount;
+    wallet.lastPayoutDate = new Date();
+    await wallet.save();
 
-    await transaction.save();
+    // Create transaction
+    const transaction = await Transaction.create({
+      priestId,
+      walletId: wallet._id,
+      type: 'payout_withdrawal',
+      direction: 'outflow',
+      amount,
+      status: 'completed', // Mock: always succeeds
+      description: `Withdrawal via ${paymentMethod || 'bank'}`,
+      referenceId: `mock_payout_${Date.now()}`,
+    });
 
     res.status(200).json({
-      message: "Withdrawal request submitted successfully",
+      message: 'Withdrawal request submitted successfully',
       transactionId: transaction._id,
-      amount: amount,
-      status: "pending",
+      amount,
+      status: 'completed',
+      newBalance: wallet.currentBalance,
     });
   } catch (error) {
-    console.error("Withdrawal request error:", error);
+    console.error('Withdrawal request error:', error);
     res.status(500).json({
-      message: "Server error while processing withdrawal request",
+      message: 'Server error while processing withdrawal request',
     });
   }
 };
@@ -293,14 +348,15 @@ exports.getTransactions = async (req, res) => {
     const { type, limit = 20 } = req.query;
     const priestId = req.user.id;
 
-    const query = { userId: priestId };
+    const query = { priestId };
     if (type) {
       query.type = type;
     }
 
     const transactions = await Transaction.find(query)
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit))
+      .populate('bookingId', 'ceremonyType date');
 
     res.status(200).json(transactions);
   } catch (error) {
@@ -317,7 +373,7 @@ exports.getNotifications = async (req, res) => {
     const { limit = 50, unreadOnly = false } = req.query;
     const priestId = req.query.priestId;
 
-    const query = { userId: priestId };
+    const query = { userId: priestId, targetRole: 'priest' };
     if (unreadOnly === "true") {
       query.read = false;
     }
@@ -342,7 +398,7 @@ exports.markNotificationAsRead = async (req, res) => {
     const priestId = req.user.id;
 
     const notification = await Notification.findOneAndUpdate(
-      { _id: notificationId, userId: priestId },
+      { _id: notificationId, userId: priestId, targetRole: 'priest' },
       { read: true, updatedAt: new Date() },
       { new: true }
     );
@@ -368,7 +424,7 @@ exports.markAllNotificationsAsRead = async (req, res) => {
     const priestId = req.user.id;
 
     await Notification.updateMany(
-      { userId: priestId, read: false },
+      { userId: priestId, read: false, targetRole: 'priest' },
       { read: true, updatedAt: new Date() }
     );
 
@@ -431,6 +487,18 @@ exports.updateBookingStatus = async (req, res) => {
       { new: true }
     ).populate("devoteeId", "name");
 
+    // Process commission AFTER booking is saved as completed
+    if (status === "completed") {
+      try {
+        const result = await processBookingCompletion(bookingId);
+        console.log(`Commission processed for booking ${bookingId}: ₹${result.transaction.amount} credited to priest wallet`);
+      } catch (commissionError) {
+        console.error('Commission processing error:', commissionError.message);
+        // Don't fail the status update — the booking is already marked completed
+        // Commission can be retried manually
+      }
+    }
+
     // Create notification for the devotee
     try {
       let notificationTitle, notificationMessage, notificationType;
@@ -469,6 +537,7 @@ exports.updateBookingStatus = async (req, res) => {
         title: notificationTitle,
         message: notificationMessage,
         type: notificationType,
+        targetRole: "devotee",
         relatedId: booking._id,
       });
 
@@ -481,6 +550,7 @@ exports.updateBookingStatus = async (req, res) => {
             booking.ceremonyType
           } ceremony with ${booking.devoteeId?.name || "devotee"}.`,
           type: "payment",
+          targetRole: "priest",
           relatedId: booking._id,
         });
       }
@@ -496,6 +566,13 @@ exports.updateBookingStatus = async (req, res) => {
       message: `Booking ${status} successfully`,
       booking: updatedBooking,
     });
+
+    // Fire-and-forget reliability recalculation after response is sent
+    if (status === "completed" || status === "cancelled") {
+      recalculateReliability(priestId).catch(err =>
+        console.warn('Reliability recalculation failed:', err.message)
+      );
+    }
   } catch (error) {
     console.error("Update booking status error:", error);
     res.status(500).json({
@@ -559,6 +636,76 @@ exports.getAvailablePujaris = async (req, res) => {
     res.status(500).json({ message: "Server error fetching pujaris" });
   }
 };
+
+// Get pending actions (bookings to complete or rate)
+exports.getPendingActions = async (req, res) => {
+  try {
+    const priestId = req.user.id;
+    const now = new Date();
+
+    // 1. Find Confirmed bookings that are past due (need completion)
+    const dueBookings = await Booking.find({
+      priestId,
+      status: 'confirmed',
+      date: { $lt: now }
+    })
+    .populate("devoteeId", "name profilePicture")
+    .select("ceremonyType date location devoteeId basePrice")
+    .lean();
+
+    // Add type to these
+    const actions = dueBookings.map(b => ({
+      ...b,
+      actionType: 'mark_complete',
+      title: 'Mark as Complete',
+      description: `Ceremony with ${b.devoteeId?.name} is past due.`
+    }));
+
+    // 2. Find Completed bookings that haven't been reviewed by this priest
+    // First get all completed bookings
+    const completedBookings = await Booking.find({
+      priestId,
+      status: 'completed'
+    })
+    .populate("devoteeId", "name profilePicture")
+    .select("ceremonyType date location devoteeId basePrice")
+    .lean();
+
+    if (completedBookings.length > 0) {
+       // Get all reviews submitted by this priest for these bookings
+       const bookingIds = completedBookings.map(b => b._id);
+       const existingReviews = await Review.find({
+         bookingId: { $in: bookingIds },
+         reviewerId: priestId
+       }).select('bookingId');
+
+       const reviewedBookingIds = new Set(existingReviews.map(r => r.bookingId.toString()));
+
+       // Filter out reviewed bookings
+       const unreviewed = completedBookings.filter(b => !reviewedBookingIds.has(b._id.toString()));
+
+       const reviewActions = unreviewed.map(b => ({
+         ...b,
+         actionType: 'rate_devotee',
+         title: 'Rate Devotee',
+         description: `Rate your experience with ${b.devoteeId?.name}`
+       }));
+
+       actions.push(...reviewActions);
+    }
+
+    // Sort by date (oldest first?) or action urgency?
+    // Let's sort oldest first so they deal with backlog
+    actions.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.status(200).json(actions);
+
+  } catch (error) {
+    console.error("Get pending actions error:", error);
+    res.status(500).json({ message: "Server error fetching pending actions" });
+  }
+};
+
 // Upload priest's verification documents
 exports.uploadDocument = async (req, res) => {
   try {
@@ -572,10 +719,19 @@ exports.uploadDocument = async (req, res) => {
     }
 
     const priestId = req.user.id;
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png"];
+    
+    // Only allow PDF for verification documents (government_id, religious_certificate)
+    // Profile pictures can still be images
+    const isVerificationDoc = documentType === 'government_id' || documentType === 'religious_certificate';
+    const allowedTypes = isVerificationDoc 
+      ? ["application/pdf"]
+      : ["application/pdf", "image/jpeg", "image/png"];
     
     if (!allowedTypes.includes(req.file.mimetype)) {
-      return res.status(400).json({ message: "Invalid file type. Only PDF, JPEG, and PNG are allowed." });
+      const errorMsg = isVerificationDoc 
+        ? "Invalid file type. Only PDF files are allowed for verification documents."
+        : "Invalid file type. Only PDF, JPEG, and PNG are allowed.";
+      return res.status(400).json({ message: errorMsg });
     }
 
     const newDocument = {
@@ -628,10 +784,15 @@ exports.uploadDocument = async (req, res) => {
 
     await profile.save();
 
-    res.status(200).json({ 
-      message: "Document uploaded successfully", 
-      documentId: profile.verificationDocuments[profile.verificationDocuments.length - 1]._id 
-    });
+    const responsePayload = { message: "Document uploaded successfully" };
+    if (documentType !== 'profile_picture') {
+        const savedDoc = profile.verificationDocuments.find(d => d.type === documentType);
+        if (savedDoc) {
+            responsePayload.documentId = savedDoc._id;
+        }
+    }
+
+    res.status(200).json(responsePayload);
 
   } catch (error) {
     console.error("Upload document error:", error);
@@ -639,10 +800,197 @@ exports.uploadDocument = async (req, res) => {
   }
 };
 
+// Get priest's verification document (serve as file)
+exports.getDocument = async (req, res) => {
+  try {
+    const { documentType } = req.params;
+    const priestId = req.user.id;
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const document = profile.verificationDocuments.find(d => d.type === documentType);
+    if (!document) {
+      return res.status(404).json({ message: "Document not found" });
+    }
+
+    if (!document.data) {
+      return res.status(404).json({ message: "Document data not found" });
+    }
+
+    // Debug logging
+    console.log("Document data type:", typeof document.data);
+    console.log("Document data constructor:", document.data.constructor?.name);
+    console.log("Document contentType:", document.contentType);
+    console.log("Has buffer property:", !!document.data.buffer);
+    console.log("Is Buffer:", Buffer.isBuffer(document.data));
+
+    // Convert MongoDB Binary to Buffer if needed
+    let bufferData;
+    if (document.data.buffer) {
+      // MongoDB Binary object
+      bufferData = Buffer.from(document.data.buffer);
+    } else if (Buffer.isBuffer(document.data)) {
+      bufferData = document.data;
+    } else {
+      // Try to convert directly
+      bufferData = Buffer.from(document.data);
+    }
+    
+    console.log("Buffer length:", bufferData.length);
+    console.log("First bytes:", bufferData.slice(0, 10).toString('hex'));
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', document.contentType || 'application/pdf');
+    res.setHeader('Content-Length', bufferData.length);
+    res.setHeader('Content-Disposition', `inline; filename="${document.fileName || 'document.pdf'}"`);
+    
+    // Send the buffer
+    res.send(bufferData);
+
+  } catch (error) {
+    console.error("Get document error:", error);
+    res.status(500).json({ message: "Server error while fetching document" });
+  }
+};
+
+// Submit priest verification application
+exports.submitVerification = async (req, res) => {
+  try {
+    const priestId = req.user.id;
+    const { 
+      experience, 
+      description, 
+      sampradaya, 
+      services, 
+      location,
+      address,
+      languagesSpoken // if updated from user level
+    } = req.body;
+
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    // Update profile data
+    if (experience !== undefined) profile.experience = experience;
+    if (description !== undefined) profile.description = description;
+    if (sampradaya !== undefined) profile.sampradaya = sampradaya;
+    if (services !== undefined) profile.services = services;
+    if (location !== undefined) profile.location = location;
+    if (address !== undefined) {
+      if (typeof address === 'string') {
+        profile.address = { ...profile.address, fullAddress: address };
+      } else {
+        profile.address = {
+          ...profile.address,
+          ...address
+        };
+      }
+    }
+
+    // Set status to pending
+    profile.verificationStatus = 'pending';
+    
+    await profile.save();
+
+    // Optionally update user level languages if provided
+    if (languagesSpoken && Array.isArray(languagesSpoken)) {
+      await User.findByIdAndUpdate(priestId, { languagesSpoken });
+    }
+
+    res.status(200).json({ 
+      message: "Verification application submitted successfully",
+      status: 'pending'
+    });
+  } catch (error) {
+    console.error("Submit verification error:", error);
+    res.status(500).json({ message: "Server error while submitting verification" });
+  }
+};
+
+// Accept an instant booking request
+exports.acceptInstantBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    const priestId = req.user.id; // User ID of the priest
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking request not found." });
+    }
+
+    if (booking.status !== 'searching') {
+      return res.status(400).json({ message: `Cannot accept this booking. Status is ${booking.status}.` });
+    }
+
+    if (booking.expiryTime && new Date() > booking.expiryTime) {
+      booking.status = 'expired';
+      await booking.save();
+      return res.status(400).json({ message: "Booking request has expired." });
+    }
+
+    // Atomically accept the booking (first come first served)
+    const updatedBooking = await Booking.findOneAndUpdate(
+      { _id: bookingId, status: 'searching' },
+      { 
+        $set: { 
+          status: 'confirmed', 
+          priestId: priestId,
+          updatedAt: Date.now()
+        } 
+      },
+      { new: true }
+    ).populate('devoteeId', 'name');
+
+    if (!updatedBooking) {
+      return res.status(400).json({ message: "Booking was already accepted by someone else or is no longer available." });
+    }
+
+    // Notify the devotee via Socket.io
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+    const devoteeSocketId = userSockets.get(updatedBooking.devoteeId._id.toString());
+
+    if (devoteeSocketId) {
+      io.to(devoteeSocketId).emit('instant_booking_accepted', {
+        bookingId: updatedBooking._id,
+        priestId: priestId,
+        message: "A priest has accepted your instant booking request!"
+      });
+    }
+
+    // Create notification for devotee
+    try {
+      await Notification.createNotification({
+        userId: updatedBooking.devoteeId._id,
+        title: "Instant Booking Confirmed",
+        message: `A priest has accepted your instant booking request for ${updatedBooking.ceremonyType}.`,
+        type: "booking",
+        targetRole: "devotee",
+        relatedId: updatedBooking._id,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to create persistence notification for instant booking:", notifErr);
+    }
+
+    res.status(200).json(updatedBooking);
+
+  } catch (error) {
+    console.error("Accept instant booking error:", error);
+    res.status(500).json({ message: "Server error while accepting instant booking", error: error.message });
+  }
+};
+
+
 // Get profile completion percentage
 exports.getProfileCompletion = async (req, res) => {
   try {
     const userId = req.user.id;
+    console.log(`[DEBUG] getProfileCompletion for user: ${userId}`);
     const user = await User.findById(userId).populate('languagesSpoken');
     
     if (!user) {
@@ -664,6 +1012,7 @@ exports.getProfileCompletion = async (req, res) => {
         verificationDocuments: [],
         templesAffiliated: []
       });
+      console.log(`[DEBUG] Creating new profile for user: ${userId}`);
       await priestProfile.save();
     }
 
@@ -672,23 +1021,23 @@ exports.getProfileCompletion = async (req, res) => {
       basicInfo: !!(user.name && user.email && user.phone),
       languages: user.languagesSpoken && user.languagesSpoken.length > 0,
       profilePicture: !!priestProfile.profilePicture,
-      description: !!priestProfile.description && priestProfile.description.length > 20,
+      description: !!priestProfile.description && priestProfile.description.length >= 20,
       experience: priestProfile.experience !== undefined && priestProfile.experience >= 0,
+      religiousTradition: !!priestProfile.religiousTradition,
+      address: !!(priestProfile.address?.street && priestProfile.address?.town),
       services: priestProfile.services && priestProfile.services.length > 0,
-      location: priestProfile.location && priestProfile.location.coordinates && 
-                priestProfile.location.coordinates[0] !== 0 && 
-                priestProfile.location.coordinates[1] !== 0,
       documents: priestProfile.verificationDocuments && priestProfile.verificationDocuments.length > 0,
     };
 
     const weights = {
       basicInfo: 10,
       languages: 10,
-      profilePicture: 15,
+      profilePicture: 10,
       description: 10,
       experience: 10,
-      services: 20,
-      location: 15,
+      religiousTradition: 10,
+      address: 15,
+      services: 15,
       documents: 10,
     };
 
@@ -723,7 +1072,10 @@ exports.getProfileCompletion = async (req, res) => {
       canAcceptRequests: completionPercentage >= 80 && hasVerifiedDocs,
     });
   } catch (error) {
-    console.error('Error calculating profile completion:', error);
-    res.status(500).json({ message: 'Server error while calculating profile completion' });
+    console.error('❌ Error in getProfileCompletion:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Server error while calculating profile completion' 
+    });
   }
 };

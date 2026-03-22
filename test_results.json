@@ -1,0 +1,378 @@
+{
+  "passed": 62,
+  "failed": 0,
+  "results": [
+    {
+      "suite": "1. Authentication",
+      "name": "Valid devotee login returns 200 + token",
+      "passed": true,
+      "detail": "user: Rohan Gupta"
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Second devotee login",
+      "passed": true,
+      "detail": "user: Devotee One"
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Valid priest login returns 200 + token",
+      "passed": true,
+      "detail": "user: Pandit Sharma"
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Wrong password returns 4xx (got 401)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Non-existent user returns 4xx (got 401)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Missing identifier returns 4xx (got 401)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Empty login body returns 4xx (got 401)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "1. Authentication",
+      "name": "Phone login works (user: Rohan Gupta)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "2. Priest Search & Discovery",
+      "name": "GET /priests returns list (3 priests)",
+      "passed": true,
+      "detail": "first: Pandit Sharma"
+    },
+    {
+      "suite": "2. Priest Search & Discovery",
+      "name": "GET /priests/:id returns priest profile (Pandit Sharma)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "2. Priest Search & Discovery",
+      "name": "Non-existent priestId returns 404",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "2. Priest Search & Discovery",
+      "name": "Search with religion filter returns 200",
+      "passed": true,
+      "detail": "0 results"
+    },
+    {
+      "suite": "2. Priest Search & Discovery",
+      "name": "Search with city filter returns results",
+      "passed": true,
+      "detail": "0 results"
+    },
+    {
+      "suite": "3. Booking Creation Validation",
+      "name": "Missing fields returns 400",
+      "passed": true,
+      "detail": "Missing required fields: ceremonyType, date, startTime, endTime, location, basePrice, totalAmount"
+    },
+    {
+      "suite": "3. Booking Creation Validation",
+      "name": "Missing location.city returns 400",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "3. Booking Creation Validation",
+      "name": "Invalid priestId returns 4xx",
+      "passed": true,
+      "detail": "Invalid priest profile ID"
+    },
+    {
+      "suite": "3. Booking Creation Validation",
+      "name": "Unauthenticated booking returns 401",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "3. Booking Creation Validation",
+      "name": "Priest cannot create a devotee booking (403 Forbidden)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Create booking returns 201",
+      "passed": true,
+      "detail": "ID: 699a01fd4ea552210d03e763, Status: pending"
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "New booking starts as pending",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Devotee can fetch their booking",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Priest can see the pending booking",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Devotee cannot accept/reject a booking (403)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Priest can accept booking",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Status updated to confirmed",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Devotee sees confirmed status after priest acceptance",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Priest can mark booking as completed",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Second booking created for reject test",
+      "passed": true,
+      "detail": "ID: 699a02014ea552210d03e7e2"
+    },
+    {
+      "suite": "4. Full Booking Lifecycle",
+      "name": "Priest can reject/cancel a booking",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "GET /devotee/notifications returns 44 notifications",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "\"Booking Accepted\" notification exists",
+      "passed": true,
+      "detail": "Pandit Sharma has accepted your Satyanarayan Puja request! D"
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "\"Booking Declined\" notification exists",
+      "passed": true,
+      "detail": "Pandit Sharma has declined your Satyanarayan Puja request. P"
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "Mark notification as read works",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "Mark all notifications as read works",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "GET /priest/notifications returns 0 notifications",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "5. Notifications",
+      "name": "Devotee cannot access priest notifications (403)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "6. Reviews & Ratings",
+      "name": "Submit review returns 2xx",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "6. Reviews & Ratings",
+      "name": "Duplicate review returns 4xx (deduplication works)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "6. Reviews & Ratings",
+      "name": "Rating > 5 returns 400 (validation works)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "6. Reviews & Ratings",
+      "name": "Get user reviews returns 0 reviews",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "6. Reviews & Ratings",
+      "name": "GET /pending-actions returns 5 actions",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "7. Priest Profile & Dashboard",
+      "name": "GET /priest/profile returns 200",
+      "passed": true,
+      "detail": "name: Pandit Sharma"
+    },
+    {
+      "suite": "7. Priest Profile & Dashboard",
+      "name": "GET /priest/earnings returns 200",
+      "passed": true,
+      "detail": "thisMonth: 24701"
+    },
+    {
+      "suite": "7. Priest Profile & Dashboard",
+      "name": "GET /priest/bookings/pending-actions returns 16 actions",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "7. Priest Profile & Dashboard",
+      "name": "Devotee cannot access priest profile endpoint (403)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "7. Priest Profile & Dashboard",
+      "name": "Toggle priest status works",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "8. Address Management",
+      "name": "Add address returns 201",
+      "passed": true,
+      "detail": "addressId: 699a020a4ea552210d03e844"
+    },
+    {
+      "suite": "8. Address Management",
+      "name": "GET addresses returns 1 addresses",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "8. Address Management",
+      "name": "Update address returns 200",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "8. Address Management",
+      "name": "Delete address returns 200",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "8. Address Management",
+      "name": "Unauthenticated address access returns 401",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "Fake JWT returns 401",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "SQL injection attempt in login rejected",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "Devotee2 cannot see Devotee1 notifications (data isolation OK)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "Booking with past date returns 400",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "Invalid booking status value returns 400",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "9. Security & Edge Cases",
+      "name": "Extremely long ceremonyType returns 400",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "10. Concurrent / State Machine Edge Cases",
+      "name": "Fresh booking created for edge case tests",
+      "passed": true,
+      "detail": "ID: 699a020f4ea552210d03e86a"
+    },
+    {
+      "suite": "10. Concurrent / State Machine Edge Cases",
+      "name": "First accept OK",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "10. Concurrent / State Machine Edge Cases",
+      "name": "Double-accept returns 400 (idempotency guard)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "10. Concurrent / State Machine Edge Cases",
+      "name": "Cannot cancel an already-confirmed booking (correct state-machine)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "suite": "10. Concurrent / State Machine Edge Cases",
+      "name": "Cannot mark a pending booking as complete (correct)",
+      "passed": true,
+      "detail": ""
+    }
+  ]
+}

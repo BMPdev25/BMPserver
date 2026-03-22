@@ -1,23 +1,39 @@
-const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
+const mongoose = require('mongoose');
 
-let mongoServer;
+let mongod;
 
-beforeAll(async () => {
-  process.env.JWT_SECRET = 'test-secret-key-123';
-  mongoServer = await MongoMemoryServer.create();
-  const mongoUri = mongoServer.getUri();
-  await mongoose.connect(mongoUri);
-});
+/**
+ * Connect to the in-memory database.
+ */
+module.exports.connect = async () => {
+    mongod = await MongoMemoryServer.create();
+    const uri = mongod.getUri();
+    
+    // Mongoose 7+ options
+    await mongoose.connect(uri);
+};
 
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
-});
+/**
+ * Drop database, close the connection and stop mongod.
+ */
+module.exports.closeDatabase = async () => {
+    if (mongod) {
+        await mongoose.connection.dropDatabase();
+        await mongoose.connection.close();
+        await mongod.stop();
+    }
+};
 
-afterEach(async () => {
-  const collections = mongoose.connection.collections;
-  for (const key in collections) {
-    await collections[key].deleteMany();
-  }
-});
+/**
+ * Remove all data from all collections.
+ */
+module.exports.clearDatabase = async () => {
+    if (mongod) {
+        const collections = mongoose.connection.collections;
+        for (const key in collections) {
+            const collection = collections[key];
+            await collection.deleteMany();
+        }
+    }
+};

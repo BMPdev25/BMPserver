@@ -20,6 +20,11 @@ const notificationSchema = new mongoose.Schema({
     enum: ['booking', 'payment', 'reminder', 'general', 'withdrawal'],
     required: true,
   },
+  targetRole: {
+    type: String,
+    enum: ['priest', 'devotee'],
+    required: true,
+  },
   read: {
     type: Boolean,
     default: false,
@@ -49,11 +54,47 @@ notificationSchema.pre('save', function(next) {
   next();
 });
 
+const ExpoSDK = require('expo-server-sdk');
+const Expo = ExpoSDK.Expo || ExpoSDK.default?.Expo || ExpoSDK;
+let expo;
+try {
+  expo = new Expo();
+} catch (err) {
+  console.error('Failed to initialize Expo SDK:', err.message);
+}
+
 // Helper method to create notifications
 notificationSchema.statics.createNotification = async function(data) {
   try {
     const notification = new this(data);
     await notification.save();
+
+    // Send push notification via Expo if token exists
+    mongoose.model('User').findById(data.userId).then(async (user) => {
+      if (user && user.expoPushToken && Expo.isExpoPushToken(user.expoPushToken)) {
+        let messages = [];
+        messages.push({
+          to: user.expoPushToken,
+          sound: 'default',
+          title: data.title,
+          body: data.message,
+          data: { relatedId: data.relatedId, type: data.type },
+        });
+
+        try {
+          let chunks = expo.chunkPushNotifications(messages);
+          for (let chunk of chunks) {
+            let ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+            console.log('Push notification sent:', ticketChunk);
+          }
+        } catch (pushError) {
+          console.error('Error sending push notification via Expo:', pushError);
+        }
+      }
+    }).catch(err => {
+      console.error('Error fetching user for push notification:', err);
+    });
+
     return notification;
   } catch (error) {
     console.error('Error creating notification:', error);

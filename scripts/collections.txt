@@ -1,0 +1,16 @@
+puja
+transactions
+languages
+users
+pujas
+notifications
+admins
+pujaitemtemplates
+bookings
+priestprofiles
+pujariitemoverrides
+ratings
+pujaris
+ceremonies
+ceremonycategories
+callbackrequests

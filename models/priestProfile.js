@@ -14,10 +14,23 @@ const PriestServiceSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  requirements: {
+    type: [String],
+    default: [],
+  },
   // Optional seasonal overrides (optional but future-ready)
   seasonalPrice: {
     type: Number,
   },
+  customSteps: [{
+    title: String,
+    description: String,
+    durationEstimate: Number,
+    additionalCharge: {
+      type: Number,
+      default: 0
+    }
+  }],
 }, { _id: false });
 
 const priestProfileSchema = new mongoose.Schema({
@@ -49,6 +62,16 @@ const priestProfileSchema = new mongoose.Schema({
     },
   },
 
+  address: {
+    houseNo: String,
+    street: String,
+    town: String,
+    state: String,
+    country: String,
+    pincode: String,
+    fullAddress: String,
+  },
+
   serviceRadiusKm: {
     type: Number,
     default: 10
@@ -67,12 +90,23 @@ const priestProfileSchema = new mongoose.Schema({
   },
 
   availability: {
-    type: Map,
-    of: [{
-      available: Boolean,
-      startTime: String,
-      endTime: String,
+    weeklySchedule: {
+      type: Map,
+      of: [String],
+      default: {
+        monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: []
+      }
+    },
+    dateOverrides: [{
+      date: Date,
+      isUnavailable: { type: Boolean, default: false },
+      customSlots: [{
+        start: String,
+        end: String
+      }],
+      reason: String
     }],
+    timeZone: { type: String, default: "Asia/Kolkata" }
   },
 
   // Travel & service area management
@@ -89,39 +123,24 @@ const priestProfileSchema = new mongoose.Schema({
   },
 
   ceremonyCount: { type: Number, default: 0 },
-  isVerified: { type: Boolean, default: true },
+  cancelledCount: { type: Number, default: 0 },
+  noShowCount: { type: Number, default: 0 },
+  isVerified: { type: Boolean, default: false },
+  
+  // Phase 11: Onboarding & Verification
+  verificationStatus: { 
+    type: String, 
+    enum: ['incomplete', 'pending', 'approved', 'rejected'], 
+    default: 'incomplete' 
+  },
+  rejectionReason: String,
+  sampradaya: String,
 
   // Real-time status
   currentAvailability: {
     status: { type: String, enum: ["available", "busy", "offline"], default: "offline" },
     lastUpdated: { type: Date, default: Date.now },
     autoToggle: { type: Boolean, default: true },
-  },
-
-  // Work schedule
-  schedule: {
-    workingHours: {
-      type: Map,
-      of: {
-        isWorking: Boolean,
-        startTime: String,
-        endTime: String,
-        breakTime: {
-          start: String,
-          end: String,
-        },
-      },
-    },
-    blockedDates: [{
-      date: Date,
-      reason: String,
-    }],
-    recurringUnavailability: [{
-      dayOfWeek: Number,
-      startTime: String,
-      endTime: String,
-      reason: String,
-    }],
   },
 
   // Earnings
@@ -185,5 +204,9 @@ const priestProfileSchema = new mongoose.Schema({
 
 // Very important: For radius search
 priestProfileSchema.index({ location: "2dsphere" });
+
+// Performance indexes for devotee queries
+priestProfileSchema.index({ isVerified: 1, "ratings.average": -1 });
+priestProfileSchema.index({ "ratings.average": -1 });
 
 module.exports = mongoose.model("PriestProfile", priestProfileSchema);

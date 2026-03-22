@@ -1,0 +1,25 @@
+{
+  "_id": "69ac65240119aee34b5629fd",
+  "name": "Archana",
+  "slug": "archana",
+  "description": "Archana is a special worship ritual where the devotee's name and birth star are chanted along with the 108 or 1008 names of the deity. It is one of the most common and accessible puja forms, ideal for seeking divine blessings for health, prosperity, and well-being.",
+  "shortDescription": "Sacred name chanting ritual for divine blessings and well-being",
+  "category": "general",
+  "pujaType": "bookable",
+  "duration": "30 minutes",
+  "durationMinutes": 30,
+  "basePrice": 501,
+  "whatsIncluded": [
+    "Pandit ji for puja",
+    "Mantra chanting",
+    "Prasad distribution",
+    "Aarti"
+  ],
+  "requiresItems": "optional",
+  "imageUrl": "",
+  "isActive": true,
+  "displayOrder": 1,
+  "__v": 0,
+  "createdAt": "2026-03-07T17:49:24.775Z",
+  "updatedAt": "2026-03-09T17:02:37.575Z"
+}

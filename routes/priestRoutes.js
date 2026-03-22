@@ -17,9 +17,13 @@ router.use(priestOnly);
 router.put('/profile', priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
 router.get('/profile-completion', priestController.getProfileCompletion);
+router.put('/status', priestController.toggleStatus);
+
 
 // Booking routes
 router.get('/bookings', priestController.getBookings);
+router.get('/bookings/pending-actions', priestController.getPendingActions);
+router.post('/bookings/instant/accept', priestController.acceptInstantBooking);
 router.get('/bookings/:bookingId', bookingController.getBookingDetails);
 router.put('/bookings/:bookingId/status', priestController.updateBookingStatus);
 
@@ -42,5 +46,7 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 router.post('/documents', upload.single('document'), priestController.uploadDocument);
+router.post('/submit-verification', priestController.submitVerification);
+router.get('/documents/:documentType', priestController.getDocument);
 
 module.exports = router;

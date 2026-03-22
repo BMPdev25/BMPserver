@@ -18,21 +18,54 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const ceremonyRoutes = require("./routes/ceremonyRoutes");
 const languageRoutes = require('./routes/languageRoutes');
+const walletRoutes = require('./routes/walletRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const metadataRoutes = require('./routes/metadataRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const { scheduleReminders } = require('./jobs/cronJobs');
 
 // Load environment variables
 dotenv.config();
+
+// Start cron jobs
+scheduleReminders();
 
 // Create Express app
 const app = express();
 const server = http.createServer(app);
 
-// Initialize Socket.IO for real-time features
 const io = socketIo(server, {
   cors: {
     origin: process.env.CLIENT_URL || "*",
     methods: ["GET", "POST"]
   }
 });
+
+// Map to store connected users and their socket IDs
+const userSockets = new Map();
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('register', (userId) => {
+    if (userId) {
+      userSockets.set(userId.toString(), socket.id);
+      socket.userId = userId.toString();
+      console.log(`User ${userId} registered with socket ${socket.id}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.userId) {
+      userSockets.delete(socket.userId);
+      console.log(`User ${socket.userId} disconnected`);
+    }
+  });
+});
+
+// Make io and userSockets accessible in controllers
+app.set('io', io);
+app.set('userSockets', userSockets);
 
 // Security and performance middleware
 app.use(helmet({
@@ -67,6 +100,13 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/ceremonies', ceremonyRoutes);
 app.use('/api/languages', languageRoutes);
+app.use('/api/wallet', walletRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/metadata', metadataRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Dev-Only Test Fixtures for Maestro (Protected internally by NODE_ENV)
+app.use('/api/test', require('./routes/testFixtures'));
 
 // Connect to MongoDB and Start Server only if run directly
 if (require.main === module) {
@@ -75,9 +115,8 @@ if (require.main === module) {
     .catch(err => console.error('MongoDB connection error:', err));
 
   const PORT = process.env.PORT || 5000;
-  // const HOST = '0.0.0.0'; 
-  server.listen(PORT, () => {
-    console.log(`Server running on localhost:${PORT}`);
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on 0.0.0.0:${PORT}`);
     console.log('Socket.IO enabled for real-time features');
   });
 }

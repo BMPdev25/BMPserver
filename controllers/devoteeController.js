@@ -3,13 +3,21 @@ const User = require("../models/user");
 const PriestProfile = require("../models/priestProfile");
 const Booking = require("../models/booking");
 const Notification = require("../models/notification");
+const Review = require("../models/review");
+const Ceremony = require("../models/ceremony");
+const mongoose = require("mongoose");
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res) => {
   try {
     // Get all priest profiles
     const allPriests = await PriestProfile.find({})
-      .populate("userId", "name email phone location")
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name" }
+      })
+      .lean()
       .exec();
 
     res.status(200).json({
@@ -21,13 +29,12 @@ exports.getAllPriests = async (req, res) => {
         phone: priest.userId?.phone || "",
         experience: priest.experience,
         religiousTradition: priest.religiousTradition,
-        religiousTradition: priest.religiousTradition,
-        // ceremonies: priest.ceremonies, // removed
         isVerified: priest.isVerified,
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
         profilePicture: priest.profilePicture,
         rating: priest.ratings, // Map to singular 'rating'
+        languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
       })),
     });
   } catch (error) {
@@ -42,22 +49,53 @@ exports.getAllPriests = async (req, res) => {
 // Search for priests
 exports.searchPriests = async (req, res) => {
   try {
-    const { ceremony, city, date, page = 1, limit = 10 } = req.query;
-    // console.log('Search priests request:', req.query);
+    const { ceremony, city, date, religion, minRating, page = 1, limit = 10 } = req.query;
 
     // Build query filter
     const filter = {};
 
     if (ceremony) {
-      // Legacy ceremony string search removed.
-      // TODO: Implement search by service/ceremonyId if needed
+      // Find the ceremony ID by name
+      const ceremonyDoc = await Ceremony.findOne({ 
+        name: new RegExp(ceremony, 'i'),
+        isActive: true 
+      }).select('_id').lean();
+      
+      if (ceremonyDoc) {
+        filter['services.ceremonyId'] = ceremonyDoc._id;
+      } else {
+        // If ceremony not found, we should probably return no results 
+        // because the filter requested something non-existent
+        return res.status(200).json({
+          priests: [],
+          currentPage: parseInt(page),
+          totalPages: 0,
+          totalPriests: 0,
+        });
+      }
     }
 
+    // BUG-10 FIX: 'userId.location.city' cannot be queried via Mongoose populate dot-notation.
+    // Do a pre-query on User collection to get matching user IDs, then filter by priestProfile.userId.
     if (city) {
-      filter["userId.location.city"] = new RegExp(city, "i");
+      const cityRegex = new RegExp(city, 'i');
+      const cityUsers = await User.find({ 'location.city': cityRegex }).select('_id').lean();
+      const cityUserIds = cityUsers.map(u => u._id);
+      filter.userId = { $in: cityUserIds };
     }
 
-    // console.log('Search filter:', filter);
+    // Filter by religious tradition
+    if (religion) {
+      filter.religiousTradition = new RegExp(religion, 'i');
+    }
+
+    // Filter by minimum rating
+    if (minRating) {
+      filter['ratings.average'] = { $gte: parseFloat(minRating) };
+    }
+
+    // NEW: Always filter by availability status 'available'
+    filter['currentAvailability.status'] = 'available';
 
     // If search term is provided, we need to find matching users first (by name)
     // and then add them to the priest filter
@@ -65,45 +103,35 @@ exports.searchPriests = async (req, res) => {
       const searchRegex = new RegExp(req.query.search, "i");
       
       // Find users matching the name
-      const matchingUsers = await User.find({ name: searchRegex }).select('_id');
+      const matchingUsers = await User.find({ name: searchRegex }).select('_id').lean();
       const matchingUserIds = matchingUsers.map(u => u._id);
 
       // Add to filter with OR condition for name, description, or ceremonies
       filter.$or = [
         { userId: { $in: matchingUserIds } },
         { description: searchRegex },
-        // { ceremonies: { $elemMatch: { $regex: searchRegex } } } // removed legacy
       ];
     }
 
     // Get priest profiles with user details
     const priests = await PriestProfile.find(filter)
-      .populate("userId", "name email phone location")
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name" }
+      })
+      .populate("services.ceremonyId", "name") // For ceremony badges
+      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified services analytics.completionRate")
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
+      .lean()
       .exec();
-
-    // console.log('Found priests count:', priests.length);
-    // console.log(priests);
-    // console.log('Sample priest data:', priests[0] ? {
-    //   _id: priests[0]._id,
-    //   userId: priests[0].userId,
-    //   experience: priests[0].experience,
-    //   religiousTradition: priests[0].religiousTradition,
-    //   ceremonies: priests[0].ceremonies,
-    //   isVerified: priests[0].isVerified
-    // } : 'No priests found');
 
     // Filter out priests who are not verified (all priests are verified by default now)
     const verifiedPriests = priests.filter(
       (priest) => priest.isVerified !== false
     );
-
-    // console.log('Verified priests count:', verifiedPriests);
-    // verifiedPriests.map(p=> {
-    //   console.log(p.name)
-    // });
 
     // Format response
     const formattedPriests = verifiedPriests.map((priest) => ({
@@ -113,18 +141,25 @@ exports.searchPriests = async (req, res) => {
       phone: priest.userId?.phone || "",
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      religiousTradition: priest.religiousTradition,
-      // ceremonies: priest.ceremonies, // removed
       profilePicture: priest.profilePicture,
       rating: priest.ratings, // Map to singular 'rating'
-      ceremonyCount: priest.ceremonyCount,
+      ratings: priest.ratings,
+      ceremonyCount: priest.ceremonyCount || 0,
+      cancelledCount: priest.cancelledCount || 0,
+      noShowCount: priest.noShowCount || 0,
       location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
+      languages: priest.userId?.languagesSpoken?.map(l => l.name || l) || [],
+      services: priest.services?.map(s => ({
+        name: s.ceremonyId?.name || "Unknown",
+        price: s.price,
+        duration: s.durationMinutes,
+        ritualSteps: s.ceremonyId?.ritualSteps || [],
+        customSteps: s.customSteps || []
+      })) || [],
+      completionRate: priest.analytics?.completionRate ?? 100,
     }));
-
-    // console.log('Formatted priests count:', formattedPriests);
-    // console.log('Formatted priests count:', formattedPriests.length);
 
     res.status(200).json({
       priests: formattedPriests,
@@ -145,13 +180,40 @@ exports.searchPriests = async (req, res) => {
 exports.getPriestDetails = async (req, res) => {
   try {
     const { priestId } = req.params;
-    console.log("Getting priest details for priestId:", priestId);
+    console.log("devoteeController: getPriestDetails for priestId:", priestId);
 
-    // Try to find actual priest first
+    // Validate priestId to prevent CastError
+    if (!priestId || priestId === "undefined" || !mongoose.isValidObjectId(priestId)) {
+      console.warn("Invalid priestId provided:", priestId);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priest ID provided"
+      });
+    }
+
+      // Try to find actual priest first
     let priest = await PriestProfile.findById(priestId)
-      .populate("userId", "name email phone location")
-      .populate("services.ceremonyId", "name") // Populate ceremony details
+      .populate({
+        path: "userId",
+        select: "name email phone location languagesSpoken",
+        populate: { path: "languagesSpoken", select: "name" }
+      })
+      .populate("services.ceremonyId", "name ritualSteps") // Populate ceremony details and base ritual steps
+      .lean()
       .exec();
+
+    if (!priest) {
+      console.log("devoteeController: PriestProfile not found by _id. Trying to find by userId...");
+      priest = await PriestProfile.findOne({ userId: priestId })
+        .populate({
+          path: "userId",
+          select: "name email phone location languagesSpoken",
+          populate: { path: "languagesSpoken", select: "name" }
+        })
+        .populate("services.ceremonyId", "name ritualSteps")
+        .lean()
+        .exec();
+    }
 
     if (priest) {
       
@@ -160,8 +222,30 @@ exports.getPriestDetails = async (req, res) => {
         id: service.ceremonyId?._id,
         name: service.ceremonyId?.name || "Unknown Ceremony",
         price: service.price,
-        duration: service.durationMinutes
+        duration: service.durationMinutes,
+        ritualSteps: service.ceremonyId?.ritualSteps || [],
+        customSteps: service.customSteps || []
       })) || [];
+
+      // Format weekly availability
+      // Frontend expects: weeklyAvailability: Record<string, { available: boolean, startTime: string, endTime: string }>
+      // Backend (Map) -> Object
+      const weeklyAvailabilityObj = {};
+      if (priest.availability && priest.availability.weeklySchedule) {
+        // Handle Map or Object
+        const schedule = priest.availability.weeklySchedule instanceof Map 
+          ? Object.fromEntries(priest.availability.weeklySchedule) 
+          : priest.availability.weeklySchedule;
+
+        Object.keys(schedule).forEach(day => {
+          const slots = schedule[day] || [];
+          weeklyAvailabilityObj[day] = {
+            available: slots.length > 0,
+            startTime: slots.length > 0 ? slots[0].split('-')[0] : "09:00",
+            endTime: slots.length > 0 ? slots[0].split('-')[1] : "17:00"
+          };
+        });
+      }
 
       const priestData = {
         _id: priest._id,
@@ -174,7 +258,14 @@ exports.getPriestDetails = async (req, res) => {
           "Experienced priest specializing in various religious ceremonies.",
         profilePicture: priest.profilePicture || "",
         rating: priest.ratings || { average: 4.5, count: 50 }, // Map to singular 'rating'
-        availability: "available",
+        availability: priest.currentAvailability?.status || "available",
+        
+        // Extended Fields for UI
+        languages: priest.userId?.languagesSpoken?.map(l => l.name) || [],
+        certifications: priest.specializations?.map(s => s.certification).filter(Boolean) || [],
+        templeAffiliation: priest.templesAffiliated && priest.templesAffiliated.length > 0 ? priest.templesAffiliated[0] : null,
+        weeklyAvailability: weeklyAvailabilityObj,
+
         priceList: priest.priceList || {
           Wedding: 15000,
           "Grih Pravesh": 8000,
@@ -182,42 +273,20 @@ exports.getPriestDetails = async (req, res) => {
           "Satyanarayan Katha": 11000,
           default: 8000,
         },
-        ceremonyCount: priest.ceremonyCount || 100,
+        ceremonyCount: priest.ceremonyCount || 0,
+        cancelledCount: priest.cancelledCount || 0,
+        noShowCount: priest.noShowCount || 0,
+        completionRate: priest.analytics?.completionRate ?? 100,
       };
+      
       return res.status(200).json(priestData);
     }
 
-    // Fallback demo data if priest not found in database
-    const demoData = {
-      _id: priestId,
-      name: priestId.includes("mahantesh") ? "Mahantesh" : "Dr. Rajesh Sharma",
-      experience: 25,
-      religiousTradition: "Hinduism",
-      ceremonies: [
-        { name: "Wedding", price: 15000, duration: 120 },
-        { name: "Grih Pravesh", price: 8000, duration: 60 },
-        { name: "Baby Naming", price: 5000, duration: 45 },
-        { name: "Satyanarayan Katha", price: 11000, duration: 90 },
-      ],
-      description:
-        "Experienced priest specializing in various religious ceremonies.",
-      profilePicture: "",
-      ratings: {
-        average: 4.9,
-        count: 120,
-      },
-      availability: "available",
-      priceList: {
-        Wedding: 15000,
-        "Grih Pravesh": 8000,
-        "Baby Naming": 5000,
-        "Satyanarayan Katha": 11000,
-        default: 8000,
-      },
-      ceremonyCount: 200,
-    };
-
-    res.status(200).json(demoData);
+    // BUG-8 FIX: Remove hardcoded demo data fallback — return proper 404 instead
+    return res.status(404).json({
+      success: false,
+      message: 'Priest not found'
+    });
   } catch (error) {
     console.error("Get priest details error:", error);
     res.status(500).json({
@@ -279,6 +348,17 @@ exports.createBooking = async (req, res) => {
       });
     }
 
+    // BUG-2 FIX: Reject bookings with past dates
+    const todayStr = new Date().toISOString().split('T')[0];
+    const bookingDateStr = new Date(req.body.date).toISOString().split('T')[0];
+
+    if (bookingDateStr < todayStr) {
+      return res.status(400).json({
+        success: false,
+        message: 'Booking date cannot be in the past'
+      });
+    }
+
     // Validate location object
     if (!req.body.location.address || !req.body.location.city) {
       console.error("Missing location address or city");
@@ -327,7 +407,7 @@ exports.createBooking = async (req, res) => {
       ...req.body,
       priestId: userPriestId, // Use the User ID for the priest
       devoteeId,
-      status: req.body.paymentStatus === "completed" ? "confirmed" : "pending",
+      status: req.body.status || "requested", // Respect frontend status (or default to requested)
       paymentStatus: req.body.paymentStatus || "pending",
       basePrice: finalBasePrice, // Use the calculated price
     };
@@ -350,6 +430,7 @@ exports.createBooking = async (req, res) => {
           req.body.date
         ).toLocaleDateString()} at ${req.body.startTime}.`,
         type: "booking",
+        targetRole: "priest",
         relatedId: savedBooking._id,
       });
     } catch (notificationError) {
@@ -399,7 +480,13 @@ exports.updateProfile = async (req, res) => {
     user.name = req.body.name || user.name;
     user.email = req.body.email || user.email;
     user.phone = req.body.phone || user.phone;
-    // Add more fields as needed
+    // Update family details if provided
+    if (req.body.familyDetails) {
+      if (!user.familyDetails) user.familyDetails = {};
+      if (req.body.familyDetails.gotra !== undefined) user.familyDetails.gotra = req.body.familyDetails.gotra;
+      if (req.body.familyDetails.nakshatra !== undefined) user.familyDetails.nakshatra = req.body.familyDetails.nakshatra;
+      if (req.body.familyDetails.rashi !== undefined) user.familyDetails.rashi = req.body.familyDetails.rashi;
+    }
     await user.save();
     res.json(user);
   } catch (error) {
@@ -414,7 +501,7 @@ exports.getNotifications = async (req, res) => {
     const { limit = 50, unreadOnly = false } = req.query;
     const devoteeId = req.user.id;
 
-    const query = { userId: devoteeId };
+    const query = { userId: devoteeId, targetRole: 'devotee' };
     if (unreadOnly === "true") {
       query.read = false;
     }
@@ -438,8 +525,12 @@ exports.markNotificationAsRead = async (req, res) => {
     const { notificationId } = req.params;
     const devoteeId = req.user.id;
 
+    if (!notificationId || !mongoose.isValidObjectId(notificationId)) {
+      return res.status(400).json({ message: "Invalid notification ID" });
+    }
+
     const notification = await Notification.findOneAndUpdate(
-      { _id: notificationId, userId: devoteeId },
+      { _id: notificationId, userId: devoteeId, targetRole: 'devotee' },
       { read: true, updatedAt: new Date() },
       { new: true }
     );
@@ -465,7 +556,7 @@ exports.markAllNotificationsAsRead = async (req, res) => {
     const devoteeId = req.user.id;
 
     await Notification.updateMany(
-      { userId: devoteeId, read: false },
+      { userId: devoteeId, read: false, targetRole: 'devotee' },
       { read: true, updatedAt: new Date() }
     );
 
@@ -529,6 +620,10 @@ exports.updateAddress = async (req, res) => {
     const { addressId } = req.params;
     const updateData = req.body;
     
+    if (!addressId || !mongoose.isValidObjectId(addressId)) {
+      return res.status(400).json({ message: "Invalid address ID" });
+    }
+    
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -565,6 +660,9 @@ exports.updateAddress = async (req, res) => {
 exports.deleteAddress = async (req, res) => {
   try {
     const { addressId } = req.params;
+    if (!addressId || !mongoose.isValidObjectId(addressId)) {
+        return res.status(400).json({ message: "Invalid address ID" });
+    }
     const user = await User.findById(req.user.id);
     
     if (!user) {
@@ -585,3 +683,161 @@ exports.deleteAddress = async (req, res) => {
     res.status(500).json({ message: "Server error deleting address" });
   }
 };
+
+// --- Actions & Reviews ---
+
+// Get pending actions (e.g., rate bookings)
+exports.getPendingActions = async (req, res) => {
+  try {
+    const devoteeId = req.user.id;
+
+    // 1. Find completed bookings for this devotee
+    const completedBookings = await Booking.find({
+      devoteeId: devoteeId,
+      status: 'completed'
+    })
+    .populate("priestId", "name profilePicture")
+    .select("_id ceremonyType date priestId")
+    .sort({ date: -1 })
+    .lean()
+    .exec();
+
+    if (completedBookings.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    // 2. Bulk query: find all reviews by this devotee for these bookings
+    const bookingIds = completedBookings.map(b => b._id);
+    const existingReviews = await Review.find({
+      bookingId: { $in: bookingIds },
+      reviewerId: devoteeId
+    }).select("bookingId").lean();
+
+    const reviewedBookingIds = new Set(existingReviews.map(r => r.bookingId.toString()));
+
+    // 3. Filter out already-reviewed bookings
+    const actions = completedBookings
+      .filter(booking => !reviewedBookingIds.has(booking._id.toString()))
+      .map(booking => ({
+        _id: booking._id,
+        type: 'rate_priest',
+        title: 'Rate your Experience',
+        description: `How was the ${booking.ceremonyType}?`,
+        booking: {
+          _id: booking._id,
+          ceremonyType: booking.ceremonyType,
+          date: booking.date,
+          priestName: booking.priestId?.name || "Priest",
+          priestId: booking.priestId?._id
+        },
+        date: booking.date
+      }));
+
+    res.status(200).json(actions);
+  } catch (error) {
+    console.error("Get pending actions error:", error);
+    res.status(500).json({
+      message: "Server error while fetching pending actions",
+      error: error.message
+    });
+  }
+};
+
+// Book an instant ceremony
+exports.bookInstantCeremony = async (req, res) => {
+  try {
+    const { ceremonyType, latitude, longitude, maxPrice, address, city } = req.body;
+    const devoteeId = req.user.id;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ message: "Location coordinates required for instant booking." });
+    }
+
+    // 1. Find matching priests using GeoJSON search
+    const matchingPriests = await PriestProfile.find({
+      isVerified: true,
+      'currentAvailability.status': 'available',
+      location: {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(longitude), parseFloat(latitude)] // [lng, lat]
+          },
+          $maxDistance: 50000 // 50km
+        }
+      }
+    }).populate('userId', 'name profilePicture');
+
+    // 2. Filter by priest's custom radius and price
+    const eligiblePriests = matchingPriests.filter(priest => {
+      // Basic radius check is handled by $near. In future, we can check priest.serviceRadiusKm
+      
+      // Price Check
+      const price = priest.priceList ? (priest.priceList.get(ceremonyType) || priest.priceList.get('default')) : 0;
+      if (maxPrice && price > maxPrice) return false;
+      if (!price) return false;
+      
+      return true;
+    });
+
+    if (eligiblePriests.length === 0) {
+      return res.status(404).json({ message: "No priests available for instant booking in your area right now." });
+    }
+
+    // 3. Create a 'searching' booking
+    const expiryTime = new Date();
+    expiryTime.setMinutes(expiryTime.getMinutes() + 5);
+
+    const booking = new Booking({
+      devoteeId,
+      ceremonyType,
+      date: new Date(),
+      startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+      endTime: "07:00", // Default end time placeholder
+      location: { 
+        address, 
+        city,
+        coordinates: {
+          type: 'Point',
+          coordinates: [parseFloat(longitude), parseFloat(latitude)]
+        }
+      },
+      status: 'searching',
+      bookingType: 'instant',
+      expiryTime,
+      basePrice: eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default'),
+      platformFee: Math.round((eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default')) * 0.05),
+      totalAmount: Math.round((eligiblePriests[0].priceList.get(ceremonyType) || eligiblePriests[0].priceList.get('default')) * 1.05),
+    });
+
+    const savedBooking = await booking.save();
+
+    // 4. Notify matching priests via Socket.io
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+
+    let notifiedCount = 0;
+    eligiblePriests.forEach(priest => {
+      const socketId = userSockets.get(priest.userId._id.toString());
+      if (socketId) {
+        io.to(socketId).emit('new_instant_request', {
+          bookingId: savedBooking._id,
+          ceremonyType,
+          location: { address, city },
+          price: savedBooking.totalAmount,
+          expiryTime: savedBooking.expiryTime
+        });
+        notifiedCount++;
+      }
+    });
+
+    console.log(`Instant booking initiated. Notified ${notifiedCount} priests.`);
+
+    res.status(201).json(savedBooking);
+
+  } catch (error) {
+    console.error("Instant booking error:", error);
+    res.status(500).json({ message: "Server error during instant booking initiation", error: error.message });
+  }
+};
+

@@ -61,3 +61,14 @@ exports.devoteeOnly = (req, res, next) => {
     });
   }
 };
+
+// Middleware to restrict access to admin only
+exports.adminOnly = (req, res, next) => {
+  if (req.user && req.user.userType === 'admin') {
+    next();
+  } else {
+    res.status(403).json({
+      message: 'Access denied, admin role required'
+    });
+  }
+};

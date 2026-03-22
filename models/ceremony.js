@@ -12,6 +12,9 @@ const ceremonySchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  history: {
+    type: String, // Cultural/religious background and significance
+  },
   category: {
     type: String,
     required: true,
@@ -113,6 +116,24 @@ const ceremonySchema = new mongoose.Schema({
       type: String,
     }],
   },
+  // Ritual Steps (Default Template)
+  ritualSteps: [{
+    stepNumber: {
+      type: Number,
+      required: true,
+    },
+    title: {
+      type: String,
+      required: true,
+    },
+    description: {
+      type: String,
+      required: true,
+    },
+    durationEstimate: {
+      type: Number, // Optional duration in minutes
+    }
+  }],
   // SEO and Searchability
   tags: [{
     type: String,

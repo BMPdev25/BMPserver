@@ -1,0 +1,136 @@
+
+════════════════════════════════════════════════════════════
+  SACRED CONNECT — COMPREHENSIVE TEST SUITE
+  21/2/2026, 11:46:53 pm
+════════════════════════════════════════════════════════════
+
+════════════════════════════════════════════════════════════
+  SUITE: 1. Authentication
+════════════════════════════════════════════════════════════
+  ✅  Valid devotee login returns 200 + token
+       └─ user: Rohan Gupta
+  ✅  Second devotee login
+       └─ user: Devotee One
+  ✅  Valid priest login returns 200 + token
+       └─ user: Pandit Sharma
+  ✅  Wrong password returns 4xx (got 401)
+  ✅  Non-existent user returns 4xx (got 401)
+  ✅  Missing identifier returns 4xx (got 401)
+  ✅  Empty login body returns 4xx (got 401)
+  ✅  Phone login works (user: Rohan Gupta)
+
+════════════════════════════════════════════════════════════
+  SUITE: 2. Priest Search & Discovery
+════════════════════════════════════════════════════════════
+  ✅  GET /priests returns list (3 priests)
+       └─ first: Pandit Sharma
+  ✅  GET /priests/:id returns priest profile (Pandit Sharma)
+  ✅  Non-existent priestId returns 404
+  ✅  Search with religion filter returns 200
+       └─ 0 results
+  ✅  Search with city filter returns results
+       └─ 0 results
+
+════════════════════════════════════════════════════════════
+  SUITE: 3. Booking Creation Validation
+════════════════════════════════════════════════════════════
+  ✅  Missing fields returns 400
+       └─ Missing required fields: ceremonyType, date, startTime, endTime, location, basePrice, totalAmount
+  ✅  Missing location.city returns 400
+  ✅  Invalid priestId returns 4xx
+       └─ Invalid priest profile ID
+  ✅  Unauthenticated booking returns 401
+  ✅  Priest cannot create a devotee booking (403 Forbidden)
+
+════════════════════════════════════════════════════════════
+  SUITE: 4. Full Booking Lifecycle
+════════════════════════════════════════════════════════════
+  ✅  Create booking returns 201
+       └─ ID: 6999f69982c8f71e85ee5639, Status: pending
+  ✅  New booking starts as pending
+  ✅  Devotee can fetch their booking
+  ✅  Priest can see the pending booking
+  ✅  Devotee cannot accept/reject a booking (403)
+  ✅  Priest can accept booking
+  ✅  Status updated to confirmed
+  ✅  Devotee sees confirmed status after priest acceptance
+  ✅  Priest can mark booking as completed
+  ✅  Second booking created for reject test
+       └─ ID: 6999f69b82c8f71e85ee56a0
+  ✅  Priest can reject/cancel a booking
+
+════════════════════════════════════════════════════════════
+  SUITE: 5. Notifications
+════════════════════════════════════════════════════════════
+  ✅  GET /devotee/notifications returns 38 notifications
+  ✅  "Booking Accepted" notification exists
+       └─ Pandit Sharma has accepted your Satyanarayan Puja request! D
+  ✅  "Booking Declined" notification exists
+       └─ Pandit Sharma has declined your Satyanarayan Puja request. P
+  ✅  Mark notification as read works
+  ✅  Mark all notifications as read works
+  ✅  GET /priest/notifications returns 0 notifications
+  ✅  Devotee cannot access priest notifications (403)
+
+════════════════════════════════════════════════════════════
+  SUITE: 6. Reviews & Ratings
+════════════════════════════════════════════════════════════
+  ✅  Submit review returns 2xx
+  ✅  Duplicate review returns 4xx (deduplication works)
+  ✅  Rating > 5 returns 400 (validation works)
+  ✅  Get user reviews returns 0 reviews
+  ✅  GET /pending-actions returns 5 actions
+
+════════════════════════════════════════════════════════════
+  SUITE: 7. Priest Profile & Dashboard
+════════════════════════════════════════════════════════════
+  ✅  GET /priest/profile returns 200
+       └─ name: Pandit Sharma
+  ✅  GET /priest/earnings returns 200
+       └─ thisMonth: 24701
+  ✅  GET /priest/bookings/pending-actions returns 14 actions
+  ✅  Devotee cannot access priest profile endpoint (403)
+  ✅  Toggle priest status works
+
+════════════════════════════════════════════════════════════
+  SUITE: 8. Address Management
+════════════════════════════════════════════════════════════
+  ✅  Add address returns 201
+       └─ addressId: 6999f6a082c8f71e85ee5702
+  ✅  GET addresses returns 1 addresses
+  ✅  Update address returns 200
+  ✅  Delete address returns 200
+  ✅  Unauthenticated address access returns 401
+
+════════════════════════════════════════════════════════════
+  SUITE: 9. Security & Edge Cases
+════════════════════════════════════════════════════════════
+  ✅  Fake JWT returns 401
+  ✅  SQL injection attempt in login rejected
+  ✅  Devotee2 cannot see Devotee1 notifications (data isolation OK)
+  ❌  Booking with past date was accepted
+       └─ BUG: past date bookings should be rejected
+  ✅  Invalid booking status value returns 400
+  ✅  Extremely long ceremonyType returns 400
+
+════════════════════════════════════════════════════════════
+  SUITE: 10. Concurrent / State Machine Edge Cases
+════════════════════════════════════════════════════════════
+  ✅  Fresh booking created for edge case tests
+       └─ ID: 6999f6a482c8f71e85ee5735
+  ✅  First accept OK
+  ✅  Double-accept returns 400 (idempotency guard)
+  ✅  Cannot cancel an already-confirmed booking (correct state-machine)
+  ✅  Cannot mark a pending booking as complete (correct)
+
+════════════════════════════════════════════════════════════
+  FINAL SUMMARY
+════════════════════════════════════════════════════════════
+
+  Total: 62 | Passed: 61 | Failed: 1
+
+  FAILURES:
+    ❌ [9. Security & Edge Cases] Booking with past date was accepted
+         BUG: past date bookings should be rejected
+
+  Results written to test_results.json

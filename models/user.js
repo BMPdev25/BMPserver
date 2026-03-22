@@ -29,9 +29,13 @@ const userSchema = new mongoose.Schema({
     sparse: true,
     unique: true
   },
+  expoPushToken: {
+    type: String,
+    default: null
+  },
   userType: {
     type: String,
-    enum: ['priest', 'devotee'],
+    enum: ['priest', 'devotee', 'admin'],
     required: true,
   },
   isActive: {
@@ -94,7 +98,50 @@ const userSchema = new mongoose.Schema({
   languagesSpoken: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Language'
-  }]
+  }],
+  // Rating Statistics (Cached for performance)
+  rating: {
+    average: {
+      type: Number,
+      default: 0,
+      index: true, 
+    },
+    count: {
+      type: Number,
+      default: 0,
+    },
+    breakdown: {
+      type: Map,
+      of: Number, // e.g., { "5": 12, "4": 3 }
+      default: {},
+    }
+  },
+  // Profile Picture (uploaded to Cloudinary)
+  profilePicture: {
+    url: { type: String, default: null },
+    publicId: { type: String, default: null },
+    uploadedAt: { type: Date, default: null }
+  },
+  // Family / Spiritual Details (for devotees)
+  familyDetails: {
+    gotra: { type: String, default: '' },
+    nakshatra: { type: String, default: '' },
+    rashi: { type: String, default: '' }
+  },
+  dateOfBirth: {
+    type: Date,
+    default: null
+  },
+  devoteeReliability: {
+    score: { type: Number, default: 100 }, // Starts at 100
+    cancellationCount: { type: Number, default: 0 },
+    lateCancellationCount: { type: Number, default: 0 },
+    completedCount: { type: Number, default: 0 }
+  },
+  isTestRecord: {
+    type: Boolean,
+    default: false
+  }
 });
 
 // Indexes for performance
@@ -196,5 +243,9 @@ userSchema.methods.toSafeObject = function() {
   }
   return userObject;
 };
+
+// Performance indexes
+userSchema.index({ userType: 1 });
+userSchema.index({ userType: 1, isActive: 1 });
 
 module.exports = mongoose.model('User', userSchema);
