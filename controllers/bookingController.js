@@ -838,12 +838,12 @@ const createPaymentOrder = async (req, res) => {
 
     // Create Razorpay order
     const order = await getRazorpayInstance().orders.create({
-      amount: amount * 100, // Convert to paise
+      amount: Math.round(amount * 100), // Convert to paise and ensure it's an integer
       currency: 'INR',
-      receipt: `booking_${bookingId}_${Date.now()}`,
+      receipt: `rcpt_${bookingId.toString().slice(-6)}_${Date.now()}`,
       notes: {
         bookingId: bookingId,
-        ceremonyType: booking.ceremonyType,
+        ceremonyType: booking.ceremonyType ? booking.ceremonyType.toString().substring(0, 250) : '',
         priestId: booking.priestId.toString()
       }
     });
