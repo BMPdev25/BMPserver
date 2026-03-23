@@ -9,12 +9,12 @@ try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
     admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
+      credential: admin.credential.cert(serviceAccount),
     });
     console.log('Firebase Admin initialized successfully');
   } else {
     console.log('Firebase Admin not initialized: Missing FIREBASE_SERVICE_ACCOUNT env var');
-    // For development without keys, we might mock verifyIdToken if needed, 
+    // For development without keys, we might mock verifyIdToken if needed,
     // but typically we just warn.
   }
 } catch (error) {

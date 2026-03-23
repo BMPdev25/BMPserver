@@ -9,7 +9,7 @@ const scheduleReminders = () => {
     console.log('[Cron] Running scheduled job for booking reminders');
     try {
       const now = moment();
-      
+
       // Look for confirmed bookings
       const bookings = await Booking.find({ status: 'confirmed' });
 
@@ -37,7 +37,7 @@ const scheduleReminders = () => {
             `Your booking for ${booking.ceremonyType} is scheduled for tomorrow at ${booking.startTime}.`,
             'devotee'
           );
-          
+
           // Notify Priest
           await sendReminder(
             booking.priestId,
@@ -50,15 +50,15 @@ const scheduleReminders = () => {
 
         // 2. Morning-Of Reminder (Approx 2 hours before)
         if (hoursUntilBooking === 2) {
-           // Notify Devotee
-           await sendReminder(
+          // Notify Devotee
+          await sendReminder(
             booking.devoteeId,
             booking._id,
             'Puja Starting Soon',
             `Your ${booking.ceremonyType} is starting in 2 hours.`,
             'devotee'
           );
-          
+
           // Notify Priest
           await sendReminder(
             booking.priestId,
@@ -82,7 +82,7 @@ const sendReminder = async (userId, relatedId, title, message, targetRole) => {
       userId,
       relatedId,
       title,
-      createdAt: { $gte: moment().subtract(2, 'hours').toDate() }
+      createdAt: { $gte: moment().subtract(2, 'hours').toDate() },
     });
 
     if (!existing) {

@@ -4,7 +4,7 @@ const { MongoClient } = require('mongodb');
 
 const addLanguagesSpokenField = async () => {
   const client = new MongoClient(process.env.MONGODB_URI);
-  
+
   try {
     await client.connect();
     console.log('Connected to MongoDB');
@@ -31,11 +31,12 @@ const addLanguagesSpokenField = async () => {
     console.log(`- languagesSpoken value: ${JSON.stringify(samplePriest?.languagesSpoken)}`);
 
     // Count total users with languagesSpoken field
-    const totalWithField = await usersCollection.countDocuments({ languagesSpoken: { $exists: true } });
+    const totalWithField = await usersCollection.countDocuments({
+      languagesSpoken: { $exists: true },
+    });
     const totalUsers = await usersCollection.countDocuments({});
     console.log(`\nTotal users: ${totalUsers}`);
     console.log(`Users with languagesSpoken field: ${totalWithField}`);
-
   } catch (error) {
     console.error('Migration failed:', error);
     process.exit(1);

@@ -12,7 +12,7 @@ const devoteeProfileSchema = new mongoose.Schema({
     city: { type: String },
     state: { type: String },
     zip: { type: String },
-    country: { type: String }
+    country: { type: String },
   },
   preferences: {
     preferredCeremonies: [{ type: String }],
@@ -20,14 +20,14 @@ const devoteeProfileSchema = new mongoose.Schema({
     language: { type: String },
     notifications: {
       email: { type: Boolean, default: true },
-      sms: { type: Boolean, default: false }
-    }
+      sms: { type: Boolean, default: false },
+    },
   },
   // History is removed to avoid duplication with Booking collection
   // Query bookings by devoteeId instead
   isVerified: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
 });
 
 module.exports = mongoose.model('DevoteeProfile', devoteeProfileSchema);

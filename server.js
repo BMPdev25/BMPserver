@@ -16,7 +16,7 @@ const ratingRoutes = require('./routes/ratingRoutes');
 const userRoutes = require('./routes/userRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const searchRoutes = require('./routes/searchRoutes');
-const ceremonyRoutes = require("./routes/ceremonyRoutes");
+const ceremonyRoutes = require('./routes/ceremonyRoutes');
 const languageRoutes = require('./routes/languageRoutes');
 const walletRoutes = require('./routes/walletRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
@@ -36,9 +36,9 @@ const server = http.createServer(app);
 
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "*",
-    methods: ["GET", "POST"]
-  }
+    origin: process.env.CLIENT_URL || '*',
+    methods: ['GET', 'POST'],
+  },
 });
 
 // Map to store connected users and their socket IDs
@@ -68,18 +68,22 @@ app.set('io', io);
 app.set('userSockets', userSockets);
 
 // Security and performance middleware
-app.use(helmet({
-  contentSecurityPolicy: false, // Disable CSP for development
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false, // Disable CSP for development
+  })
+);
 app.use(compression());
 
 // Middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-app.use(cors({
-  origin: '*',
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: '*',
+    credentials: true,
+  })
+);
 
 // Serve static files
 app.use('/public', express.static('public'));
@@ -92,8 +96,8 @@ app.use((req, res, next) => {
 
 // Register API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/priest', priestRoutes);  // Changed from /api/priests to /api/priest
-app.use('/api/devotee', devoteeRoutes);  // Changed from /api/devotees to /api/devotee
+app.use('/api/priest', priestRoutes); // Changed from /api/priests to /api/priest
+app.use('/api/devotee', devoteeRoutes); // Changed from /api/devotees to /api/devotee
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/bookings', bookingRoutes);
@@ -108,11 +112,16 @@ app.use('/api/admin', adminRoutes);
 // Dev-Only Test Fixtures for Maestro (Protected internally by NODE_ENV)
 app.use('/api/test', require('./routes/testFixtures'));
 
+// Centralized Error Handler
+const errorHandler = require('./middleware/errorHandler');
+app.use(errorHandler);
+
 // Connect to MongoDB and Start Server only if run directly
 if (require.main === module) {
-  mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' })
+  mongoose
+    .connect(process.env.MONGO_URI, { dbName: 'bmp' })
     .then(() => console.log('MongoDB connected to bmp'))
-    .catch(err => console.error('MongoDB connection error:', err));
+    .catch((err) => console.error('MongoDB connection error:', err));
 
   const PORT = process.env.PORT || 5000;
   server.listen(PORT, '0.0.0.0', () => {
@@ -122,4 +131,3 @@ if (require.main === module) {
 }
 
 module.exports = { app, server };
-

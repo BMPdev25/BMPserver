@@ -1,6 +1,7 @@
 # Common Backend Errors and Fixes
 
 ## Overview
+
 This document catalogs common backend errors and their solutions for the Sacred Connect server.
 
 ---
@@ -10,19 +11,23 @@ This document catalogs common backend errors and their solutions for the Sacred 
 ### 1. JWT Token Expired
 
 **Error:**
+
 ```
 JsonWebTokenError: jwt expired
 ```
 
 **Cause:**
+
 - Token lifetime exceeded (default: 30 days)
 - User hasn't logged in recently
 
 **Fix:**
+
 - Frontend now auto-logs out on 401 errors
 - User will be redirected to login automatically
 
 **Prevention:**
+
 - Token expiration is handled automatically
 - Consider implementing refresh tokens for longer sessions
 
@@ -31,16 +36,19 @@ JsonWebTokenError: jwt expired
 ### 2. Invalid Token Format
 
 **Error:**
+
 ```
 JsonWebTokenError: invalid token
 ```
 
 **Cause:**
+
 - Malformed JWT token
 - Token was manually edited
 - Wrong secret key used
 
 **Fix:**
+
 1. Clear client-side token storage
 2. User must login again
 3. New valid token will be generated
@@ -52,16 +60,19 @@ JsonWebTokenError: invalid token
 ### 3. MongoDB Connection Failed
 
 **Error:**
+
 ```
 MongoNetworkError: failed to connect to server
 ```
 
 **Cause:**
+
 - MongoDB service not running
 - Wrong connection string
 - Network/firewall issues
 
 **Fix:**
+
 ```bash
 # Start MongoDB
 net start MongoDB  # Windows
@@ -77,15 +88,18 @@ mongosh
 ### 4. Duplicate Key Error
 
 **Error:**
+
 ```
 MongoServerError: E11000 duplicate key error
 ```
 
 **Cause:**
+
 - Trying to create document with existing unique field
 - Usually email or phone number already exists
 
 **Fix:**
+
 - Check if user already exists
 - Use different email/phone
 - Or login with existing account
@@ -97,15 +111,18 @@ MongoServerError: E11000 duplicate key error
 ### 5. Required Field Missing
 
 **Error:**
+
 ```
 ValidationError: Path `email` is required
 ```
 
 **Cause:**
+
 - Required field not provided in request
 - Empty string sent for required field
 
 **Fix:**
+
 - Ensure all required fields are sent
 - Check request body format
 - Validate on frontend before sending
@@ -115,16 +132,19 @@ ValidationError: Path `email` is required
 ### 6. Invalid Data Type
 
 **Error:**
+
 ```
 CastError: Cast to Number failed for value "abc"
 ```
 
 **Cause:**
+
 - Wrong data type sent
 - String sent for number field
 - Invalid ObjectId format
 
 **Fix:**
+
 - Convert data to correct type before sending
 - Validate input on frontend
 - Check API documentation for expected types
@@ -136,15 +156,18 @@ CastError: Cast to Number failed for value "abc"
 ### 7. Profile Not Found (Now Fixed)
 
 **Error:**
+
 ```
 Profile not found
 ```
 
 **Fix Implemented:**
+
 - Profiles now auto-created when missing
 - No manual intervention needed
 
 **Code:**
+
 ```javascript
 if (!profile) {
   profile = new PriestProfile({
@@ -163,14 +186,17 @@ if (!profile) {
 ### 8. File Too Large
 
 **Error:**
+
 ```
 PayloadTooLargeError: request entity too large
 ```
 
 **Cause:**
+
 - File exceeds size limit (5MB)
 
 **Fix:**
+
 - Compress image before upload
 - Current limit: 5MB
 - Supported formats: PDF, JPEG, PNG
@@ -180,15 +206,18 @@ PayloadTooLargeError: request entity too large
 ### 9. Invalid File Type
 
 **Error:**
+
 ```
 Invalid file type
 ```
 
 **Cause:**
+
 - Unsupported file format
 - Wrong MIME type
 
 **Fix:**
+
 - Use supported formats:
   - Images: JPEG, PNG
   - Documents: PDF
@@ -201,15 +230,18 @@ Invalid file type
 ### 10. Port Already in Use
 
 **Error:**
+
 ```
 Error: listen EADDRINUSE: address already in use :::5000
 ```
 
 **Cause:**
+
 - Another process using port 5000
 - Previous server instance still running
 
 **Fix:**
+
 ```bash
 # Windows
 netstat -ano | findstr :5000
@@ -272,15 +304,18 @@ console.log('Error:', error);
 ### 11. API Path Inconsistencies (404 Errors)
 
 **Error:**
+
 ```
 AxiosError: Request failed with status code 404
 ```
 
 **Cause:**
+
 - Inconsistent API paths in `userService.ts`
 - Some endpoints used `/user/*` instead of `/api/user/*`
 
 **Files Fixed:** `services/userService.ts`
+
 ```diff
 - api.post('/user/profile/picture', ...)
 + api.post('/api/user/profile/picture', ...)
@@ -291,15 +326,18 @@ AxiosError: Request failed with status code 404
 ### 12. Network Error - Ceremony Fetching
 
 **Error:**
+
 ```
 ERROR Error fetching pujas: [AxiosError: Network Error]
 ```
 
 **Cause:**
+
 - Wrong IP address in API configuration
 - `192.168.0.11` vs actual machine IP `192.168.29.44`
 
 **File Fixed:** `api/index.ts`
+
 ```diff
 - return 'http://192.168.0.11:5000';
 + return 'http://192.168.29.44:5000';
@@ -312,13 +350,16 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 13. Pictures Don't Load
 
 **Error:**
+
 - Ceremony images not displaying
 - Showing placeholder images
 
 **Cause:**
+
 - Data structure mismatch: `ceremony.image` vs `ceremony.images[0].url`
 
 **Files Fixed:** `HomeTab.tsx`, `BookingDetails.tsx`
+
 ```diff
 - uri: ceremony.image || placeholder
 + uri: ceremony.image || ceremony.images?.[0]?.url || placeholder
@@ -329,9 +370,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 14. Calendar Date Order
 
 **Error:**
+
 - Dates showing oldest first instead of newest
 
 **File Fixed:** `CalendarTab.tsx`
+
 ```diff
 - Object.keys(grouped).sort().map(...)
 + Object.keys(grouped).sort().reverse().map(...)
@@ -342,9 +385,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 15. Credit Card Expiry Format
 
 **Error:**
+
 - No MM/YY formatting for expiry input
 
 **File Fixed:** `Payment.tsx`
+
 - Added `formatExpiryDate()` helper function
 - Auto-formats input as user types
 
@@ -353,9 +398,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 16. Earnings Tab Static Data
 
 **Error:**
+
 - Showing hardcoded data instead of API response
 
 **File Fixed:** `EarningsTab.tsx`
+
 ```diff
 - setEarningsData({ thisMonth: 12500, ... }); // Static
 + setEarningsData(response.data); // From API
@@ -366,9 +413,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 17. Services Save Button Always Visible
 
 **Error:**
+
 - Save button shown even without changes
 
 **File Fixed:** `ServiceDetailScreen.tsx`
+
 - Added `hasChanges` state tracking
 - Button only shows when form is modified
 
@@ -377,9 +426,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 18. Rate Priest Navigation
 
 **Error:**
+
 - Using React Navigation instead of expo-router
 
 **File Fixed:** `Ratings.tsx`
+
 ```diff
 - navigation.navigate('DevoteeTabs', { screen: 'Bookings' });
 + router.push('/devotee/BookingsTab');
@@ -390,9 +441,11 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 ### 19. Location Display Shows Coordinates
 
 **Error:**
+
 - Showing `Lat: X, Lng: Y` instead of address
 
 **File Fixed:** `ProfileTab.tsx`
+
 ```diff
 - Lat: ${coords[1]}, Lng: ${coords[0]}
 + ${profile.address || `Lat: ${coords[1]}, Lng: ${coords[0]}`}
@@ -402,15 +455,14 @@ ERROR Error fetching pujas: [AxiosError: Network Error]
 
 ### Summary of Frontend Fixes
 
-| Bug | File | Status |
-|-----|------|--------|
-| API 404s | userService.ts | ✅ Fixed |
-| Network Error | api/index.ts | ✅ Fixed |
-| Images Missing | HomeTab/BookingDetails | ✅ Fixed |
-| Date Order | CalendarTab.tsx | ✅ Fixed |
-| Expiry Format | Payment.tsx | ✅ Fixed |
-| Static Earnings | EarningsTab.tsx | ✅ Fixed |
-| Save Button | ServiceDetailScreen.tsx | ✅ Fixed |
-| Navigation | Ratings.tsx | ✅ Fixed |
-| Location Display | ProfileTab.tsx | ✅ Fixed |
-
+| Bug              | File                    | Status   |
+| ---------------- | ----------------------- | -------- |
+| API 404s         | userService.ts          | ✅ Fixed |
+| Network Error    | api/index.ts            | ✅ Fixed |
+| Images Missing   | HomeTab/BookingDetails  | ✅ Fixed |
+| Date Order       | CalendarTab.tsx         | ✅ Fixed |
+| Expiry Format    | Payment.tsx             | ✅ Fixed |
+| Static Earnings  | EarningsTab.tsx         | ✅ Fixed |
+| Save Button      | ServiceDetailScreen.tsx | ✅ Fixed |
+| Navigation       | Ratings.tsx             | ✅ Fixed |
+| Location Display | ProfileTab.tsx          | ✅ Fixed |

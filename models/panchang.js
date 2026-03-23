@@ -20,9 +20,11 @@ const panchangSchema = new mongoose.Schema({
   tithi: {
     type: String,
   },
-  auspiciousFor: [{
-    type: String,
-  }],
+  auspiciousFor: [
+    {
+      type: String,
+    },
+  ],
   createdAt: {
     type: Date,
     default: Date.now,

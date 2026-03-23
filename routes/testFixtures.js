@@ -25,8 +25,8 @@ router.post('/teardown', async (req, res) => {
       deletedCount: {
         users: userResult.deletedCount,
         bookings: bookingResult.deletedCount,
-        reviews: reviewResult.deletedCount
-      }
+        reviews: reviewResult.deletedCount,
+      },
     });
   } catch (error) {
     console.error('Teardown Error:', error);
@@ -43,7 +43,7 @@ router.post('/seed/booking', async (req, res) => {
     await Review.deleteMany({ isTestRecord: true });
 
     const { bookingStatus = 'pending', paymentStatus = 'pending' } = req.body;
-    
+
     // Hash passwords (keep it simple for tests)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash('password123', salt);
@@ -55,7 +55,7 @@ router.post('/seed/booking', async (req, res) => {
       phone: '1234567890',
       password: hashedPassword,
       userType: 'devotee',
-      isTestRecord: true
+      isTestRecord: true,
     });
 
     // 2. Create Mock Priest
@@ -66,16 +66,16 @@ router.post('/seed/booking', async (req, res) => {
       password: hashedPassword,
       userType: 'priest',
       isTestRecord: true,
-      rating: { average: 5, count: 1 }
+      rating: { average: 5, count: 1 },
     });
 
     // 3. Create Mock Booking
     // Calculate a future date (tomorrow at 10 AM) or a past date depending on status
     const bookingDate = new Date();
     if (bookingStatus === 'completed') {
-       bookingDate.setDate(bookingDate.getDate() - 1); // Yesterday
+      bookingDate.setDate(bookingDate.getDate() - 1); // Yesterday
     } else {
-       bookingDate.setDate(bookingDate.getDate() + 1); // Tomorrow
+      bookingDate.setDate(bookingDate.getDate() + 1); // Tomorrow
     }
     bookingDate.setHours(10, 0, 0, 0);
 
@@ -89,14 +89,14 @@ router.post('/seed/booking', async (req, res) => {
       location: {
         address: '123 E2E Test Lane',
         city: 'Mumbai',
-        coordinates: { type: 'Point', coordinates: [72.8777, 19.0760] }
+        coordinates: { type: 'Point', coordinates: [72.8777, 19.076] },
       },
       status: bookingStatus,
       paymentStatus: paymentStatus,
       basePrice: 1000,
       platformFee: 100,
       totalAmount: 1100,
-      isTestRecord: true
+      isTestRecord: true,
     });
 
     res.json({
@@ -104,10 +104,9 @@ router.post('/seed/booking', async (req, res) => {
       data: {
         devotee: { phone: devotee.phone, password: 'password123', id: devotee._id },
         priest: { phone: priest.phone, password: 'password123', id: priest._id },
-        booking: { id: booking._id, status: booking.status }
-      }
+        booking: { id: booking._id, status: booking.status },
+      },
     });
-
   } catch (error) {
     console.error('Seeding Error:', error);
     res.status(500).json({ success: false, error: error.message });

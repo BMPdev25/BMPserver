@@ -1,42 +1,47 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const PriestServiceSchema = new mongoose.Schema({
-  ceremonyId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Ceremony",
-    required: true,
-  },
-  price: {
-    type: Number,
-    required: true,
-  },
-  durationMinutes: {
-    type: Number,
-    required: true,
-  },
-  requirements: {
-    type: [String],
-    default: [],
-  },
-  // Optional seasonal overrides (optional but future-ready)
-  seasonalPrice: {
-    type: Number,
-  },
-  customSteps: [{
-    title: String,
-    description: String,
-    durationEstimate: Number,
-    additionalCharge: {
+const PriestServiceSchema = new mongoose.Schema(
+  {
+    ceremonyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ceremony',
+      required: true,
+    },
+    price: {
       type: Number,
-      default: 0
-    }
-  }],
-}, { _id: false });
+      required: true,
+    },
+    durationMinutes: {
+      type: Number,
+      required: true,
+    },
+    requirements: {
+      type: [String],
+      default: [],
+    },
+    // Optional seasonal overrides (optional but future-ready)
+    seasonalPrice: {
+      type: Number,
+    },
+    customSteps: [
+      {
+        title: String,
+        description: String,
+        durationEstimate: Number,
+        additionalCharge: {
+          type: Number,
+          default: 0,
+        },
+      },
+    ],
+  },
+  { _id: false }
+);
 
 const priestProfileSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    ref: 'User',
     required: true,
     unique: true,
   },
@@ -53,8 +58,8 @@ const priestProfileSchema = new mongoose.Schema({
   location: {
     type: {
       type: String,
-      enum: ["Point"],
-      default: "Point",
+      enum: ['Point'],
+      default: 'Point',
     },
     coordinates: {
       type: [Number], // [longitude, latitude]
@@ -74,13 +79,15 @@ const priestProfileSchema = new mongoose.Schema({
 
   serviceRadiusKm: {
     type: Number,
-    default: 10
+    default: 10,
   },
 
-  templesAffiliated: [{
-    name: String,
-    address: String
-  }],
+  templesAffiliated: [
+    {
+      name: String,
+      address: String,
+    },
+  ],
 
   profilePicture: String,
 
@@ -94,28 +101,40 @@ const priestProfileSchema = new mongoose.Schema({
       type: Map,
       of: [String],
       default: {
-        monday: [], tuesday: [], wednesday: [], thursday: [], friday: [], saturday: [], sunday: []
-      }
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+        sunday: [],
+      },
     },
-    dateOverrides: [{
-      date: Date,
-      isUnavailable: { type: Boolean, default: false },
-      customSlots: [{
-        start: String,
-        end: String
-      }],
-      reason: String
-    }],
-    timeZone: { type: String, default: "Asia/Kolkata" }
+    dateOverrides: [
+      {
+        date: Date,
+        isUnavailable: { type: Boolean, default: false },
+        customSlots: [
+          {
+            start: String,
+            end: String,
+          },
+        ],
+        reason: String,
+      },
+    ],
+    timeZone: { type: String, default: 'Asia/Kolkata' },
   },
 
   // Travel & service area management
-  serviceAreas: [{
-    city: String,
-    state: String,
-    radius: Number,
-    travelCharges: Number,
-  }],
+  serviceAreas: [
+    {
+      city: String,
+      state: String,
+      radius: Number,
+      travelCharges: Number,
+    },
+  ],
 
   priceList: {
     type: Map,
@@ -126,19 +145,19 @@ const priestProfileSchema = new mongoose.Schema({
   cancelledCount: { type: Number, default: 0 },
   noShowCount: { type: Number, default: 0 },
   isVerified: { type: Boolean, default: false },
-  
+
   // Phase 11: Onboarding & Verification
-  verificationStatus: { 
-    type: String, 
-    enum: ['incomplete', 'pending', 'approved', 'rejected'], 
-    default: 'incomplete' 
+  verificationStatus: {
+    type: String,
+    enum: ['incomplete', 'pending', 'approved', 'rejected'],
+    default: 'incomplete',
   },
   rejectionReason: String,
   sampradaya: String,
 
   // Real-time status
   currentAvailability: {
-    status: { type: String, enum: ["available", "busy", "offline"], default: "offline" },
+    status: { type: String, enum: ['available', 'busy', 'offline'], default: 'offline' },
     lastUpdated: { type: Date, default: Date.now },
     autoToggle: { type: Boolean, default: true },
   },
@@ -149,12 +168,14 @@ const priestProfileSchema = new mongoose.Schema({
     thisMonth: { type: Number, default: 0 },
     lastMonth: { type: Number, default: 0 },
     pendingPayments: { type: Number, default: 0 },
-    monthlyEarnings: [{
-      month: Number,
-      year: Number,
-      amount: Number,
-      completedCeremonies: Number,
-    }],
+    monthlyEarnings: [
+      {
+        month: Number,
+        year: Number,
+        amount: Number,
+        completedCeremonies: Number,
+      },
+    ],
     lastPayoutDate: Date,
     nextPayoutDate: Date,
   },
@@ -164,49 +185,55 @@ const priestProfileSchema = new mongoose.Schema({
     completionRate: { type: Number, default: 100 },
     responseTime: { type: Number, default: 2 },
     repeatCustomers: { type: Number, default: 0 },
-    monthlyTrends: [{
-      month: Number,
-      year: Number,
-      bookings: Number,
-      earnings: Number,
-      averageRating: Number,
-    }],
+    monthlyTrends: [
+      {
+        month: Number,
+        year: Number,
+        bookings: Number,
+        earnings: Number,
+        averageRating: Number,
+      },
+    ],
   },
 
-  verificationDocuments: [{
-    type: {
-      type: String,
-      enum: ["government_id", "religious_certificate", "other"],
-      required: true
+  verificationDocuments: [
+    {
+      type: {
+        type: String,
+        enum: ['government_id', 'religious_certificate', 'other'],
+        required: true,
+      },
+      data: Buffer,
+      contentType: String,
+      fileName: String,
+      uploadDate: { type: Date, default: Date.now },
+      status: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending',
+      },
     },
-    data: Buffer,
-    contentType: String,
-    fileName: String,
-    uploadDate: { type: Date, default: Date.now },
-    status: {
-      type: String,
-      enum: ["pending", "verified", "rejected"],
-      default: "pending"
-    }
-  }],
+  ],
 
-  specializations: [{
-    name: String,
-    experience: Number,
-    certification: String,
-    verificationStatus: {
-      type: String,
-      enum: ["pending", "verified", "rejected"],
-      default: "pending",
+  specializations: [
+    {
+      name: String,
+      experience: Number,
+      certification: String,
+      verificationStatus: {
+        type: String,
+        enum: ['pending', 'verified', 'rejected'],
+        default: 'pending',
+      },
     },
-  }],
+  ],
 });
 
 // Very important: For radius search
-priestProfileSchema.index({ location: "2dsphere" });
+priestProfileSchema.index({ location: '2dsphere' });
 
 // Performance indexes for devotee queries
-priestProfileSchema.index({ isVerified: 1, "ratings.average": -1 });
-priestProfileSchema.index({ "ratings.average": -1 });
+priestProfileSchema.index({ isVerified: 1, 'ratings.average': -1 });
+priestProfileSchema.index({ 'ratings.average': -1 });
 
-module.exports = mongoose.model("PriestProfile", priestProfileSchema);
+module.exports = mongoose.model('PriestProfile', priestProfileSchema);

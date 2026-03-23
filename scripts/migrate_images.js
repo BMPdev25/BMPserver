@@ -29,7 +29,7 @@ const CEREMONY_IMAGES = {
   'housewarming.png': ['Housewarming', 'Griha Pravesh'], // From assets
   'home-rituals.jpg': ['Satyanarayan Puja', 'Puja'], // From assets
   'funeral.jpg': ['Funeral', 'Antyesti'],
-  
+
   // New images from public folder
   'ganapati.jpg': ['Ganapati', 'Ganesha'],
   'satyanarayan.jpg': ['Satyanarayan'],
@@ -56,11 +56,11 @@ const uploadImage = async (filename, folder) => {
     // Check public images folder
     filePath = path.join(PUBLIC_IMAGES_DIR, filename);
     if (!fs.existsSync(filePath)) {
-         console.warn(`File not found in assets or public: ${filename}`);
-         return null;
+      console.warn(`File not found in assets or public: ${filename}`);
+      return null;
     }
   }
-  
+
   try {
     const result = await cloudinary.uploader.upload(filePath, {
       folder: `sacred-connect/${folder}`,
@@ -87,28 +87,29 @@ const migrate = async () => {
     const priest = priests[i];
     // Assign images round-robin style if we have fewer images than priests
     const imageFile = PRIEST_IMAGES[i % PRIEST_IMAGES.length];
-    
+
     // Only update if no profile picture or it's a placeholder/local path
     // Also update if it's a localhost URL, as that's broken for remote devices
-    if (!priest.profilePicture || 
-        !priest.profilePicture.startsWith('http') || 
-        priest.profilePicture.includes('localhost') || 
-        priest.profilePicture.includes('127.0.0.1')) {
-            
-        const url = await uploadImage(imageFile, 'profile-pictures');
-        if (url) {
-            priest.profilePicture = url;
-            await priest.save();
-            console.log(`Updated priest ${priest._id} with ${imageFile}`);
-            
-            if (priest.userId) {
-                await User.findByIdAndUpdate(priest.userId, { 
-                    'profilePicture.url': url 
-                });
-            }
+    if (
+      !priest.profilePicture ||
+      !priest.profilePicture.startsWith('http') ||
+      priest.profilePicture.includes('localhost') ||
+      priest.profilePicture.includes('127.0.0.1')
+    ) {
+      const url = await uploadImage(imageFile, 'profile-pictures');
+      if (url) {
+        priest.profilePicture = url;
+        await priest.save();
+        console.log(`Updated priest ${priest._id} with ${imageFile}`);
+
+        if (priest.userId) {
+          await User.findByIdAndUpdate(priest.userId, {
+            'profilePicture.url': url,
+          });
         }
+      }
     } else {
-        console.log(`Priest ${priest._id} already has a valid image: ${priest.profilePicture}`);
+      console.log(`Priest ${priest._id} already has a valid image: ${priest.profilePicture}`);
     }
   }
 
@@ -119,40 +120,42 @@ const migrate = async () => {
     if (!url) continue;
 
     for (const keyword of keywords) {
-        // Find ceremonies matching the keyword (case-insensitive)
-        const ceremonies = await Ceremony.find({ 
-            name: { $regex: keyword, $options: 'i' } 
-        });
+      // Find ceremonies matching the keyword (case-insensitive)
+      const ceremonies = await Ceremony.find({
+        name: { $regex: keyword, $options: 'i' },
+      });
 
-        for (const ceremony of ceremonies) {
-             // Check if image already exists to avoid duplicates
-             const alreadyHasImage = ceremony.images.some(img => img.url === url);
-             
-             // Check if current image is localhost/broken
-             const hasBrokenImage = ceremony.images.some(img => img.url.includes('localhost') || img.url.includes('example.com'));
+      for (const ceremony of ceremonies) {
+        // Check if image already exists to avoid duplicates
+        const alreadyHasImage = ceremony.images.some((img) => img.url === url);
 
-             if (!alreadyHasImage) {
-                 // If we found a broken image, remove it or update it?
-                 // Simpler: Just push the new valid one and make it primary.
-                 
-                 const isPrimary = ceremony.images.length === 0 || hasBrokenImage;
-                 
-                 // If updating primary, unset others
-                 if (isPrimary) {
-                     ceremony.images.forEach(img => img.isPrimary = false);
-                 }
+        // Check if current image is localhost/broken
+        const hasBrokenImage = ceremony.images.some(
+          (img) => img.url.includes('localhost') || img.url.includes('example.com')
+        );
 
-                 ceremony.images.push({
-                     url: url,
-                     alt: ceremony.name,
-                     isPrimary: isPrimary
-                 });
-                 await ceremony.save();
-                 console.log(`Added image to ceremony: ${ceremony.name}`);
-             } else {
-                 console.log(`Ceremony ${ceremony.name} already has this image.`);
-             }
+        if (!alreadyHasImage) {
+          // If we found a broken image, remove it or update it?
+          // Simpler: Just push the new valid one and make it primary.
+
+          const isPrimary = ceremony.images.length === 0 || hasBrokenImage;
+
+          // If updating primary, unset others
+          if (isPrimary) {
+            ceremony.images.forEach((img) => (img.isPrimary = false));
+          }
+
+          ceremony.images.push({
+            url: url,
+            alt: ceremony.name,
+            isPrimary: isPrimary,
+          });
+          await ceremony.save();
+          console.log(`Added image to ceremony: ${ceremony.name}`);
+        } else {
+          console.log(`Ceremony ${ceremony.name} already has this image.`);
         }
+      }
     }
   }
 

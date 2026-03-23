@@ -30,8 +30,8 @@ describe('Reliability Engine — getReliabilityBadge', () => {
   });
 
   it('should handle edge case of exactly 5 bookings at boundary rates', () => {
-    expect(getReliabilityBadge(90, 5)).toBe('green');  // 90% with 5 bookings
+    expect(getReliabilityBadge(90, 5)).toBe('green'); // 90% with 5 bookings
     expect(getReliabilityBadge(70, 5)).toBe('yellow'); // 70% with 5 bookings
-    expect(getReliabilityBadge(69, 5)).toBe('red');    // 69% with 5 bookings
+    expect(getReliabilityBadge(69, 5)).toBe('red'); // 69% with 5 bookings
   });
 });
