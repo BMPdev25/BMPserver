@@ -8,6 +8,11 @@ dotenv.config();
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    // Crucial fix: dotenv sometimes escapes \n as literal string \\n. 
+    // We must ensure the private key has actual newline characters to form a valid PEM.
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount)
     });
