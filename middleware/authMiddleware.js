@@ -1,8 +1,8 @@
 // middleware/authMiddleware.js
-const jwt = require('jsonwebtoken');
+const admin = require('../config/firebase');
 const User = require('../models/user');
 
-// Protect routes - verify token
+// Protect routes - verify Firebase ID token
 exports.protect = async (req, res, next) => {
   try {
     let token;
@@ -21,22 +21,35 @@ exports.protect = async (req, res, next) => {
       });
     }
 
-    // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Verify Firebase token
+    // Wrap in a try-catch to differentiate token expiration from db errors
+    let decodedToken;
+    try {
+       decodedToken = await admin.auth().verifyIdToken(token);
+    } catch (firebaseError) {
+       console.error('Firebase token verification error:', firebaseError.message);
+       return res.status(401).json({ message: 'Not authorized, invalid or expired Firebase token' });
+    }
 
-    // Get user from token
-    const user = await User.findById(decoded.id).select('-password');
+    const firebaseUid = decodedToken.uid;
+
+    // Get user from our MongoDB by firebaseUid
+    const user = await User.findOne({ firebaseUid }).select('-password');
 
     if (!user) {
-      return res.status(401).json({ message: 'User not found' });
+      // NOTE: We do not fail here if they are hitting the /sync route, so we attach firebaseUser.
+      // But typically we enforce the user exists. Let's attach both so controllers can decide.
+      req.firebaseUser = decodedToken;
+      return res.status(401).json({ message: 'User profile not found. Please complete registration/sync.' });
     }
 
     // Add user to request object
     req.user = user;
+    req.firebaseUser = decodedToken;
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
-    res.status(401).json({ message: 'Not authorized, token failed' });
+    res.status(500).json({ message: 'Internal server error during authentication' });
   }
 };
 
