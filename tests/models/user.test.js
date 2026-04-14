@@ -8,11 +8,11 @@ describe('User Model Test', () => {
       email: 'test@example.com',
       password: 'password123',
       phone: '1234567890',
-      role: 'devotee'
+      userType: 'devotee',
     };
     const validUser = new User(userData);
     const savedUser = await validUser.save();
-    
+
     expect(savedUser._id).toBeDefined();
     expect(savedUser.name).toBe(userData.name);
     expect(savedUser.email).toBe(userData.email);

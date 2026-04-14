@@ -24,19 +24,17 @@ describe('Profile Completion API', () => {
       password: 'password123',
       phone: '9999999999',
       userType: 'priest',
-      languagesSpoken: languageId ? [languageId] : []
+      languagesSpoken: languageId ? [languageId] : [],
     });
     await priestUser.save();
     priestUserId = priestUser._id;
 
     // Login to get auth token
-    const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({
-        identifier: 'testpriest@profile.com',
-        password: 'password123'
-      });
-    
+    const loginRes = await request(app).post('/api/auth/login').send({
+      identifier: 'testpriest@profile.com',
+      password: 'password123',
+    });
+
     authToken = loginRes.body.token;
   });
 
@@ -66,8 +64,7 @@ describe('Profile Completion API', () => {
     });
 
     it('should return 401 without authentication', async () => {
-      const res = await request(app)
-        .get('/api/priest/profile-completion');
+      const res = await request(app).get('/api/priest/profile-completion');
 
       expect(res.statusCode).toEqual(401);
     });
@@ -97,10 +94,10 @@ describe('Profile Completion API', () => {
 
       expect(res.statusCode).toEqual(200);
       expect(res.body.missingFields).toBeInstanceOf(Array);
-      
+
       // New profile should be missing these fields
       const expectedMissing = ['profilePicture', 'services', 'location', 'documents'];
-      expectedMissing.forEach(field => {
+      expectedMissing.forEach((field) => {
         expect(res.body.missingFields).toContain(field);
       });
     });
@@ -142,8 +139,7 @@ describe('Profile Completion API', () => {
     });
 
     it('should return 401 without authentication', async () => {
-      const res = await request(app)
-        .get('/api/priest/profile');
+      const res = await request(app).get('/api/priest/profile');
 
       expect(res.statusCode).toEqual(401);
     });

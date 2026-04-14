@@ -31,18 +31,18 @@ const metadataController = {
       const panchang = await Panchang.findOne({
         date: {
           $gte: searchDate,
-          $lt: new Date(searchDate.getTime() + 24 * 60 * 60 * 1000)
-        }
+          $lt: new Date(searchDate.getTime() + 24 * 60 * 60 * 1000),
+        },
       });
 
       if (!panchang) {
         // Return a mock default if not found in DB yet
         return res.status(200).json({
           title: "Today's Panchang",
-          subtitle: "Auspicious day for ceremonies",
-          nakshatra: "Default",
-          tithi: "Day",
-          date: searchDate
+          subtitle: 'Auspicious day for ceremonies',
+          nakshatra: 'Default',
+          tithi: 'Day',
+          date: searchDate,
         });
       }
 
@@ -64,7 +64,7 @@ const metadataController = {
       console.error('getCategories error:', error);
       res.status(500).json({ message: 'Failed to fetch categories' });
     }
-  }
+  },
 };
 
 module.exports = metadataController;

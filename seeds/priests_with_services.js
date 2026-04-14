@@ -24,14 +24,14 @@ const seedPriests = async () => {
     // This assumes a user exists, or creates one. For safety, let's create a new dummy user.
     const priestEmail = 'priest_demo@example.com';
     let user = await User.findOne({ email: priestEmail });
-    
+
     if (!user) {
       user = await User.create({
         name: 'Pandit Sharma',
         email: priestEmail,
         password: 'password123',
         userType: 'priest',
-        phone: '9876543210'
+        phone: '9876543210',
       });
       console.log('Created dummy priest user');
     }
@@ -48,22 +48,22 @@ const seedPriests = async () => {
       profilePicture: 'https://via.placeholder.com/150',
       location: {
         type: 'Point',
-        coordinates: [78.35, 17.45] // Hyderabad approx
+        coordinates: [78.35, 17.45], // Hyderabad approx
       },
       services: [
         {
           ceremonyId: satyanarayan._id,
           price: 2500,
-          durationMinutes: 120
+          durationMinutes: 120,
         },
         {
           ceremonyId: grihaPravesh._id,
           price: 5500,
-          durationMinutes: 180
-        }
+          durationMinutes: 180,
+        },
       ],
       isVerified: true,
-      rating: { average: 4.8, count: 25 }
+      rating: { average: 4.8, count: 25 },
     });
 
     await profile.save();

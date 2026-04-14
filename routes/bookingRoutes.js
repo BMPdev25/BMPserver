@@ -21,7 +21,7 @@ const bookingCreationLimit = rateLimit({
   max: 5, // limit each IP to 5 booking creations per windowMs
   message: {
     success: false,
-    message: 'Too many booking attempts. Please try again later.'
+    message: 'Too many booking attempts. Please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -32,7 +32,7 @@ const paymentLimit = rateLimit({
   max: 10, // limit each IP to 10 payment attempts per windowMs
   message: {
     success: false,
-    message: 'Too many payment attempts. Please try again later.'
+    message: 'Too many payment attempts. Please try again later.',
   },
   standardHeaders: true,
   legacyHeaders: false,

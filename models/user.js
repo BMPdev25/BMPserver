@@ -22,16 +22,18 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: function() { return !this.firebaseUid; } // Password not required if firebaseUid exists
+    required: function () {
+      return !this.firebaseUid;
+    }, // Password not required if firebaseUid exists
   },
   firebaseUid: {
     type: String,
     sparse: true,
-    unique: true
+    unique: true,
   },
   expoPushToken: {
     type: String,
-    default: null
+    default: null,
   },
   userType: {
     type: String,
@@ -68,43 +70,47 @@ const userSchema = new mongoose.Schema({
     email: {
       bookingUpdates: { type: Boolean, default: true },
       promotions: { type: Boolean, default: false },
-      reminders: { type: Boolean, default: true }
+      reminders: { type: Boolean, default: true },
     },
     push: {
       bookingUpdates: { type: Boolean, default: true },
       promotions: { type: Boolean, default: false },
-      reminders: { type: Boolean, default: true }
-    }
+      reminders: { type: Boolean, default: true },
+    },
   },
   // Address Management
-  addresses: [{
-    type: {
-      type: String,
-      enum: ['Home', 'Work', 'Other'],
-      default: 'Home'
+  addresses: [
+    {
+      type: {
+        type: String,
+        enum: ['Home', 'Work', 'Other'],
+        default: 'Home',
+      },
+      street: String,
+      area: String,
+      city: String,
+      state: String,
+      zip: String,
+      landmark: String,
+      isDefault: {
+        type: Boolean,
+        default: false,
+      },
     },
-    street: String,
-    area: String,
-    city: String,
-    state: String,
-    zip: String,
-    landmark: String,
-    isDefault: {
-      type: Boolean,
-      default: false
-    }
-  }],
+  ],
   // Languages spoken (for priests)
-  languagesSpoken: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Language'
-  }],
+  languagesSpoken: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Language',
+    },
+  ],
   // Rating Statistics (Cached for performance)
   rating: {
     average: {
       type: Number,
       default: 0,
-      index: true, 
+      index: true,
     },
     count: {
       type: Number,
@@ -114,34 +120,34 @@ const userSchema = new mongoose.Schema({
       type: Map,
       of: Number, // e.g., { "5": 12, "4": 3 }
       default: {},
-    }
+    },
   },
   // Profile Picture (uploaded to Cloudinary)
   profilePicture: {
     url: { type: String, default: null },
     publicId: { type: String, default: null },
-    uploadedAt: { type: Date, default: null }
+    uploadedAt: { type: Date, default: null },
   },
   // Family / Spiritual Details (for devotees)
   familyDetails: {
     gotra: { type: String, default: '' },
     nakshatra: { type: String, default: '' },
-    rashi: { type: String, default: '' }
+    rashi: { type: String, default: '' },
   },
   dateOfBirth: {
     type: Date,
-    default: null
+    default: null,
   },
   devoteeReliability: {
     score: { type: Number, default: 100 }, // Starts at 100
     cancellationCount: { type: Number, default: 0 },
     lateCancellationCount: { type: Number, default: 0 },
-    completedCount: { type: Number, default: 0 }
+    completedCount: { type: Number, default: 0 },
   },
   isTestRecord: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 });
 
 // Indexes for performance
@@ -152,7 +158,7 @@ userSchema.index({ 'security.refreshTokens.token': 1 });
 userSchema.index({ createdAt: -1 });
 
 // Update timestamp before saving
-userSchema.pre('save', function(next) {
+userSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   // Ensure security object exists with defaults on save for older documents
   if (!this.security) {
@@ -169,19 +175,23 @@ userSchema.pre('save', function(next) {
 });
 
 // Password comparison method
-userSchema.methods.comparePassword = async function(candidatePassword) {
+userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
 // Method to check if account is locked
-userSchema.methods.isAccountLocked = function() {
+userSchema.methods.isAccountLocked = function () {
   // Guard against missing security object
   if (!this.security) return false;
-  return !!(this.security.accountLocked && this.security.lockedUntil && this.security.lockedUntil > Date.now());
+  return !!(
+    this.security.accountLocked &&
+    this.security.lockedUntil &&
+    this.security.lockedUntil > Date.now()
+  );
 };
 
 // Method to increment login attempts
-userSchema.methods.incrementLoginAttempts = async function() {
+userSchema.methods.incrementLoginAttempts = async function () {
   // Reset attempts if lock has expired
   // Guard against missing security object
   if (!this.security) {
@@ -196,7 +206,7 @@ userSchema.methods.incrementLoginAttempts = async function() {
       $set: {
         'security.accountLocked': false,
         'security.loginAttempts': 1,
-      }
+      },
     });
   }
 
@@ -216,7 +226,7 @@ userSchema.methods.incrementLoginAttempts = async function() {
 };
 
 // Method to reset login attempts
-userSchema.methods.resetLoginAttempts = async function() {
+userSchema.methods.resetLoginAttempts = async function () {
   // Ensure security object exists
   if (!this.security) {
     this.security = { loginAttempts: 0, accountLocked: false, lockedUntil: null };
@@ -229,16 +239,19 @@ userSchema.methods.resetLoginAttempts = async function() {
     },
     $set: {
       'security.accountLocked': false,
-    }
+    },
   });
 };
 
 // Method to safely return user data (without sensitive info)
-userSchema.methods.toSafeObject = function() {
+userSchema.methods.toSafeObject = function () {
   const userObject = this.toObject();
   delete userObject.password;
   // Guard against cases where security or refreshTokens might be undefined
-  if (userObject.security && Object.prototype.hasOwnProperty.call(userObject.security, 'refreshTokens')) {
+  if (
+    userObject.security &&
+    Object.prototype.hasOwnProperty.call(userObject.security, 'refreshTokens')
+  ) {
     delete userObject.security.refreshTokens;
   }
   return userObject;

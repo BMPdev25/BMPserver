@@ -8,16 +8,13 @@ exports.protect = async (req, res, next) => {
     let token;
 
     // Check if token exists in header
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
-    ) {
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
       token = req.headers.authorization.split(' ')[1];
     }
 
     if (!token) {
       return res.status(401).json({
-        message: 'Not authorized, no token provided'
+        message: 'Not authorized, no token provided',
       });
     }
 
@@ -59,7 +56,7 @@ exports.priestOnly = (req, res, next) => {
     next();
   } else {
     res.status(403).json({
-      message: 'Access denied, priest role required'
+      message: 'Access denied, priest role required',
     });
   }
 };
@@ -70,7 +67,7 @@ exports.devoteeOnly = (req, res, next) => {
     next();
   } else {
     res.status(403).json({
-      message: 'Access denied, devotee role required'
+      message: 'Access denied, devotee role required',
     });
   }
 };
@@ -81,7 +78,7 @@ exports.adminOnly = (req, res, next) => {
     next();
   } else {
     res.status(403).json({
-      message: 'Access denied, admin role required'
+      message: 'Access denied, admin role required',
     });
   }
 };

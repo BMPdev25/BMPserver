@@ -57,7 +57,9 @@ exports.requestWithdrawal = async (req, res) => {
 
     // Check wallet status
     if (wallet.status === 'frozen') {
-      return res.status(403).json({ message: 'Your wallet is currently frozen. Please contact support.' });
+      return res
+        .status(403)
+        .json({ message: 'Your wallet is currently frozen. Please contact support.' });
     }
 
     // Check sufficient balance

@@ -5,7 +5,7 @@ const mongoose = require('mongoose');
 
 async function checkLanguagesField() {
   try {
-    const uri = process.env.MONGODB_URI || process.env.MONGO_URI; 
+    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
     console.log('Connecting to:', uri ? 'URI Found' : 'URI Missing');
     if (!uri) throw new Error('MONGODB_URI or MONGO_URI not found in env');
 
@@ -33,16 +33,16 @@ async function checkLanguagesField() {
     // List all priests and their languages
     const priests = await User.find({ userType: 'priest' }).populate('languagesSpoken');
     console.log(`\n📋 Found ${priests.length} priests:`);
-    
-    priests.forEach(p => {
+
+    priests.forEach((p) => {
       console.log(`\nUser: ${p.name} (${p.email})`);
       console.log(`   Languages Field Exists: ${p.languagesSpoken !== undefined}`);
-      
+
       if (Array.isArray(p.languagesSpoken)) {
         console.log(`   Count: ${p.languagesSpoken.length}`);
-        const langs = p.languagesSpoken.map(l => {
-            if (typeof l === 'object' && l.name) return `${l.name} (${l._id})`;
-            return l.toString();
+        const langs = p.languagesSpoken.map((l) => {
+          if (typeof l === 'object' && l.name) return `${l.name} (${l._id})`;
+          return l.toString();
         });
         console.log(`   Values: ${JSON.stringify(langs)}`);
       } else {

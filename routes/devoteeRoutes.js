@@ -25,8 +25,18 @@ router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
 
 // Notification routes
 router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifications);
-router.put('/notifications/:notificationId/read', protect, devoteeOnly, devoteeController.markNotificationAsRead);
-router.put('/notifications/mark-all-read', protect, devoteeOnly, devoteeController.markAllNotificationsAsRead);
+router.put(
+  '/notifications/:notificationId/read',
+  protect,
+  devoteeOnly,
+  devoteeController.markNotificationAsRead
+);
+router.put(
+  '/notifications/mark-all-read',
+  protect,
+  devoteeOnly,
+  devoteeController.markAllNotificationsAsRead
+);
 
 // Address Management
 router.get('/addresses', protect, devoteeController.getAddresses);

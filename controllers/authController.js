@@ -107,7 +107,6 @@ exports.firebaseSync = async (req, res) => {
       firebaseUid: user.firebaseUid,
       profileCompleted: profileCompleted
     });
-
   } catch (error) {
     console.error('Firebase sync error:', error);
     res.status(500).json({ message: 'Server error during firebase sync/login' });
@@ -115,7 +114,7 @@ exports.firebaseSync = async (req, res) => {
 };
 
 // Store Expo Push Token
-exports.savePushToken = async (req, res) => {
+exports.savePushToken = async (req, res, next) => {
   try {
     const userId = req.user._id; // from our middleware
     const { pushToken } = req.body;
@@ -124,18 +123,10 @@ exports.savePushToken = async (req, res) => {
       return res.status(400).json({ message: 'Push token is required' });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    user.expoPushToken = pushToken;
-    await user.save();
+    await authService.savePushToken(userId, pushToken);
 
     res.status(200).json({ message: 'Push token saved successfully' });
   } catch (error) {
-    console.error('Save push token error:', error);
-    res.status(500).json({ message: 'Server error saving push token', error: error.message });
+    next(error);
   }
 };
-

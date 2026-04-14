@@ -128,20 +128,20 @@ erDiagram
     User ||--o| PriestProfile : "has (if priest)"
     User ||--o| DevoteeProfile : "has (if devotee)"
     User }|--|{ Language : "speaks (priest)"
-    
+
     PriestProfile }|--|{ Ceremony : "offers (via services)"
-    
+
     User ||--o{ Booking : "makes (devotee)"
     User ||--o{ Booking : "performs (priest)"
-    
+
     Booking ||--|| CompanyRevenue : "generates"
     Booking ||--o{ Transaction : "related to"
     Booking ||--o{ Rating : "reviewed in"
     Booking ||--o{ Review : "has reviews"
-    
+
     User ||--|| Wallet : "owns (priest)"
     Wallet ||--o{ Transaction : "contains"
-    
+
     User ||--o{ Notification : "receives"
 ```
 
@@ -150,6 +150,7 @@ erDiagram
 ## 1. Core Identity & Profiles
 
 ### **User** (`users`)
+
 Central identity for all users (Priests and Devotees).
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -166,6 +167,7 @@ Central identity for all users (Priests and Devotees).
 | `rating` | Object | No | - | Cached stats: `average`, `count`, `breakdown` |
 
 ### **PriestProfile** (`priestprofiles`)
+
 Extended profile data for users with `userType: 'priest'`.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -180,6 +182,7 @@ Extended profile data for users with `userType: 'priest'`.
 | `verificationDocuments` | Object[] | No | - | KYC docs |
 
 ### **DevoteeProfile** (`devoteeprofiles`)
+
 Extended profile data for users with `userType: 'devotee'`.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -193,6 +196,7 @@ Extended profile data for users with `userType: 'devotee'`.
 ## 2. Operations (Bookings & Reviews)
 
 ### **Booking** (`bookings`)
+
 Represents an appointment between a Devotee and a Priest.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -209,6 +213,7 @@ Represents an appointment between a Devotee and a Priest.
 | `statusHistory` | Object[] | No | `User` | Audit trail of status changes |
 
 ### **Rating** (`ratings`)
+
 Feedback provided by a devotee after a booking.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -221,6 +226,7 @@ Feedback provided by a devotee after a booking.
 | `review` | String | No | - | Text comment |
 
 ### **Review** (`reviews`)
+
 Generic review system (Priest <-> Devotee).
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -234,6 +240,7 @@ Generic review system (Priest <-> Devotee).
 | `isVisible` | Boolean | No | - | Default false |
 
 ### **Notification** (`notifications`)
+
 System notifications for users.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -248,6 +255,7 @@ System notifications for users.
 ## 3. Finance
 
 ### **Wallet** (`wallets`)
+
 Digital wallet for priests to track earnings.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -257,6 +265,7 @@ Digital wallet for priests to track earnings.
 | `status` | String | No | - | Enum: `['active', 'frozen']` |
 
 ### **Transaction** (`transactions`)
+
 Ledger of all money movements (credits, debits).
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -269,6 +278,7 @@ Ledger of all money movements (credits, debits).
 | `amount` | Number | Yes | - | Transaction value |
 
 ### **CompanyRevenue** (`companyrevenues`)
+
 Tracks platform revenue split per booking.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -284,6 +294,7 @@ Tracks platform revenue split per booking.
 ## 4. Catalogs & Static Data
 
 ### **Ceremony** (`ceremonies`)
+
 Master catalog of available religious services.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
@@ -295,6 +306,7 @@ Master catalog of available religious services.
 | `requirements` | Object | No | - | Materials list, participant count |
 
 ### **Language** (`languages`)
+
 Master list of supported languages.
 | Field | Type | Required | Refs | Notes |
 | :--- | :--- | :--- | :--- | :--- |
