@@ -130,6 +130,49 @@ exports.createBooking = async (req, res, next) => {
   }
 };
 
+// Book instant ceremony
+exports.bookInstantCeremony = async (req, res, next) => {
+  try {
+    const devoteeId = req.user.id;
+    const { ceremonyType, location, notes } = req.body;
+
+    // Create a new booking with 'searching' status for instant type
+    // This allows nearby priests to see and accept the request
+    const booking = new Booking({
+      devoteeId,
+      ceremonyType,
+      location,
+      notes,
+      date: new Date(),
+      startTime: new Date().toLocaleTimeString('en-IN', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+      endTime: '23:59', // Default end time for instant
+      bookingType: 'instant',
+      status: 'searching',
+      basePrice: req.body.basePrice || 0,
+      platformFee: req.body.platformFee || 0,
+      totalAmount: req.body.totalAmount || 0,
+      statusHistory: [
+        {
+          status: 'searching',
+          timestamp: new Date(),
+          updatedBy: devoteeId,
+          reason: 'Instant booking initiated',
+        },
+      ],
+    });
+
+    await booking.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Instant booking initiated, searching for nearby priests',
+      data: booking,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Update devotee profile
 exports.updateProfile = async (req, res, next) => {
   try {
@@ -235,6 +278,38 @@ exports.getPendingActions = async (req, res, next) => {
       }));
 
     res.status(200).json(actions);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mark notification as read
+exports.markNotificationAsRead = async (req, res, next) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notificationId, userId: req.user.id, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() },
+      { new: true }
+    );
+
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    res.status(200).json({ message: 'Notification marked as read', notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mark all notifications as read
+exports.markAllNotificationsAsRead = async (req, res, next) => {
+  try {
+    await Notification.updateMany(
+      { userId: req.user.id, read: false, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() }
+    );
+    res.status(200).json({ message: 'All notifications marked as read' });
   } catch (error) {
     next(error);
   }
