@@ -7,7 +7,12 @@ dotenv.config();
 // In a real setup, this would use a serviceAccountKey.json
 try {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    let accountStr = process.env.FIREBASE_SERVICE_ACCOUNT;
+    // Strip surrounding single or double quotes if present
+    if ((accountStr.startsWith("'") && accountStr.endsWith("'")) || (accountStr.startsWith('"') && accountStr.endsWith('"'))) {
+      accountStr = accountStr.slice(1, -1);
+    }
+    const serviceAccount = JSON.parse(accountStr);
     // Crucial fix: dotenv sometimes escapes \n as literal string \\n. 
     // We must ensure the private key has actual newline characters to form a valid PEM.
     if (serviceAccount.private_key) {

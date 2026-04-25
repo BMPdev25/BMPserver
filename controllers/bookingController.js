@@ -100,6 +100,7 @@ exports.cancelBookingByDevotee = async (req, res, next) => {
 exports.createPaymentOrder = async (req, res, next) => {
   try {
     const { bookingId, amount } = req.body;
+    const userId = req.user.id;
 
     if (!bookingId || !amount) {
       return res.status(400).json({
@@ -107,26 +108,6 @@ exports.createPaymentOrder = async (req, res, next) => {
         message: 'Booking ID and amount are required'
       });
     }
-
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      return res.status(404).json({
-        success: false,
-        message: 'Booking not found'
-      });
-    }
-
-    // Create Razorpay order
-    const order = await getRazorpayInstance().orders.create({
-      amount: Math.round(amount * 100), // Convert to paise and ensure it's an integer
-      currency: 'INR',
-      receipt: `rcpt_${bookingId.toString().slice(-6)}_${Date.now()}`,
-      notes: {
-        bookingId: bookingId,
-        ceremonyType: booking.ceremonyType ? booking.ceremonyType.toString().substring(0, 250) : '',
-        priestId: booking.priestId.toString()
-      }
-    });
 
     const order = await bookingService.createPaymentOrder(bookingId, userId);
 
