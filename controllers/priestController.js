@@ -39,6 +39,31 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
+// Get profile completion status
+exports.getProfileCompletion = async (req, res, next) => {
+  try {
+    const profile = await PriestProfile.findOne({ userId: req.user.id });
+    if (!profile) {
+      return res.status(200).json({ isCompleted: false, percentage: 0 });
+    }
+    
+    let completedFields = 0;
+    let totalFields = 4;
+    
+    if (profile.experience > 0) completedFields++;
+    if (profile.services && profile.services.length > 0) completedFields++;
+    if (profile.location && profile.location.coordinates && profile.location.coordinates[0] !== 0) completedFields++;
+    if (profile.verificationDocuments && profile.verificationDocuments.length > 0) completedFields++;
+    
+    const percentage = Math.round((completedFields / totalFields) * 100);
+    const isCompleted = percentage === 100;
+    
+    res.status(200).json({ isCompleted, percentage });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get priest's bookings
 exports.getBookings = async (req, res, next) => {
   try {
