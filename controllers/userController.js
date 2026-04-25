@@ -129,6 +129,24 @@ exports.updatePrivacySettings = async (req, res, next) => {
   }
 };
 
+exports.updateNotificationPreferences = async (req, res, next) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { notificationPreferences: req.body },
+      { new: true }
+    );
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({
+      success: true,
+      message: 'Notification preferences updated successfully',
+      data: { notificationPreferences: user.notificationPreferences },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 exports.deleteAccount = async (req, res, next) => {
   try {
     const { password, confirmationText } = req.body;
