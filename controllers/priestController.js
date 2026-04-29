@@ -249,15 +249,14 @@ exports.submitVerification = async (req, res, next) => {
   }
 };
 
-// Get document (Serving buffer)
+// Get document (Redirect to S3)
 exports.getDocument = async (req, res, next) => {
   try {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
     const doc = profile?.verificationDocuments.find((d) => d.type === req.params.documentType);
-    if (!doc) return res.status(404).json({ message: 'Document not found' });
+    if (!doc || !doc.url) return res.status(404).json({ message: 'Document not found' });
 
-    res.set('Content-Type', doc.contentType);
-    res.send(doc.data);
+    res.redirect(doc.url);
   } catch (error) {
     next(error);
   }

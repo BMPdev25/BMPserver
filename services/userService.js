@@ -34,6 +34,8 @@ const updateProfile = async (userId, updateData) => {
   return user.toSafeObject();
 };
 
+const { uploadToS3, deleteFromS3 } = require('../utils/s3');
+
 const uploadProfilePicture = async (userId, file) => {
   const user = await User.findById(userId);
   if (!user) {
@@ -42,14 +44,16 @@ const uploadProfilePicture = async (userId, file) => {
     throw error;
   }
 
-  // Delete old profile picture if exists
+  // Delete old profile picture from S3 if exists
   if (user.profilePicture.publicId) {
-    await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
+    await deleteFromS3(user.profilePicture.publicId).catch(() => {});
   }
 
+  const s3Result = await uploadToS3(file.buffer, file.originalname, file.mimetype, 'profile_pictures');
+
   user.profilePicture = {
-    url: file.path,
-    publicId: file.filename,
+    url: s3Result.Location,
+    publicId: s3Result.Key,
     uploadedAt: new Date(),
   };
 
@@ -97,7 +101,7 @@ const deleteAccount = async (userId, password) => {
   }
 
   if (user.profilePicture.publicId) {
-    await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
+    await deleteFromS3(user.profilePicture.publicId).catch(() => {});
   }
 
   await User.findByIdAndDelete(userId);

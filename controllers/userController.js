@@ -4,6 +4,7 @@ const User = require('../models/user');
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
+const { deleteFromS3 } = require('../utils/s3');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,17 +12,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'sacred-connect/profile-pictures',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [
-      { width: 400, height: 400, crop: 'fill', quality: 'auto' },
-      { format: 'webp' },
-    ],
-  },
-});
+const storage = multer.memoryStorage();
 
 exports.upload = multer({
   storage,
@@ -76,7 +67,7 @@ exports.deleteProfilePicture = async (req, res, next) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     if (user.profilePicture.publicId)
-      await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
+      await deleteFromS3(user.profilePicture.publicId).catch(() => {});
     user.profilePicture = { url: null, publicId: null, uploadedAt: null };
     await user.save();
     res.json({ success: true, message: 'Profile picture deleted successfully' });

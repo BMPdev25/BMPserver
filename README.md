@@ -27,11 +27,7 @@ node server.js
 
 ### Troubleshooting
 
-If the server fails to start:
-
-1. Check if MongoDB is running
-2. Ensure port 5000 is free
-3. Verify `.env` file exists with correct credentials
+If you encounter issues starting the server or connecting to the database, please refer to the **[Troubleshooting Guide](./docs/troubleshooting.md)** for detailed solutions to common errors like `EADDRINUSE` or MongoDB connection failures.
 
 ## Data Seeding
 
@@ -87,15 +83,19 @@ node scripts/seedData.js
 
 ## Testing
 
-For detailed information on running tests and understanding test cases, please refer to [TESTING.md](./TESTING.md).
-
-To run the tests:
+The project uses **Jest** and **Supertest** for automated testing.
 
 ```bash
 npm test
 ```
 
+For detailed information on test structures and running specific suites, refer to the [Testing Documentation](./docs/testing.md).
+
 ## Documentation
 
-- [Database Schema](./DB_SCHEMA.md) - Complete database schema documentation
-- [Testing Guide](./TESTING.md) - Testing documentation and guidelines
+Comprehensive documentation is available in the `docs/` folder:
+
+- 🏗️ **[System Architecture](./docs/architecture.md)**: Database schema (ERD), collection details, and payment flow logic.
+- 🧪 **[Testing Guide](./docs/testing.md)**: Overview of the testing suite, including model and integration tests.
+- 🔧 **[Troubleshooting](./docs/troubleshooting.md)**: Common errors (EADDRINUSE, JWT issues) and their resolutions.
+- 🚀 **[Database Migrations](./docs/operations/migration.md)**: Instructions for manual database updates and schema migrations.

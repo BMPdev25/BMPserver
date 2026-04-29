@@ -192,6 +192,8 @@ const markNotificationAsRead = async (userId, notificationId) => {
   return notification;
 };
 
+const { uploadToS3 } = require('../utils/s3');
+
 const uploadDocument = async (userId, file, documentType) => {
   const profile = await PriestProfile.findOne({ userId });
   if (!profile) {
@@ -200,13 +202,16 @@ const uploadDocument = async (userId, file, documentType) => {
     throw error;
   }
 
+  const folder = documentType === 'profile_picture' ? 'profile_pictures' : 'documents';
+  const s3Result = await uploadToS3(file.buffer, file.originalname, file.mimetype, folder);
+
   if (documentType === 'profile_picture') {
-    const b64 = file.buffer.toString('base64');
-    profile.profilePicture = `data:${file.mimetype};base64,${b64}`;
+    profile.profilePicture = s3Result.Location;
   } else {
     const newDoc = {
       type: documentType,
-      data: file.buffer,
+      url: s3Result.Location,
+      s3Key: s3Result.Key,
       contentType: file.mimetype,
       fileName: file.originalname,
       status: 'pending',
@@ -217,7 +222,10 @@ const uploadDocument = async (userId, file, documentType) => {
   }
 
   await profile.save();
-  return { message: 'Document uploaded successfully' };
+  return { 
+    message: 'Document uploaded successfully',
+    url: s3Result.Location 
+  };
 };
 
 module.exports = {
