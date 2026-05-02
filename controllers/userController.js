@@ -386,13 +386,18 @@ const updateNotificationPreferences = async (req, res) => {
     }
 
     if (email) {
-      user.notifications.email = { ...user.notifications.email, ...email };
+      for (const key in email) {
+        user.notifications.email[key] = email[key];
+      }
     }
 
     if (push) {
-      user.notifications.push = { ...user.notifications.push, ...push };
+      for (const key in push) {
+        user.notifications.push[key] = push[key];
+      }
     }
 
+    user.markModified('notifications');
     await user.save();
 
     res.json({
