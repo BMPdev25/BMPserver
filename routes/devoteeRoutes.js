@@ -14,10 +14,6 @@ router.get('/priests/:priestId', devoteeController.getPriestDetails);
 router.get('/priests/:priestId/reviews', reviewController.getUserReviews);
 
 // Protected routes (need authentication and devotee role)
-router.get('/bookings', protect, devoteeOnly, devoteeController.getBookings);
-router.post('/bookings', protect, devoteeOnly, devoteeController.createBooking);
-router.post('/bookings/instant', protect, devoteeOnly, devoteeController.bookInstantCeremony);
-router.get('/bookings/:bookingId', protect, devoteeOnly, bookingController.getBookingDetails);
 router.get('/pending-actions', protect, devoteeOnly, devoteeController.getPendingActions);
 
 // Add devotee profile update route

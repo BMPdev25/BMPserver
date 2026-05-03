@@ -53,35 +53,60 @@ exports.searchPriests = async (req, res) => {
 
     // Build query filter
     const filter = {};
+    const preQueries = [];
 
+    // 1. Ceremony Lookup
     if (ceremony) {
-      // Find the ceremony ID by name
-      const ceremonyDoc = await Ceremony.findOne({ 
-        name: new RegExp(ceremony, 'i'),
-        isActive: true 
-      }).select('_id').lean();
-      
-      if (ceremonyDoc) {
-        filter['services.ceremonyId'] = ceremonyDoc._id;
-      } else {
-        // If ceremony not found, we should probably return no results 
-        // because the filter requested something non-existent
-        return res.status(200).json({
-          priests: [],
-          currentPage: parseInt(page),
-          totalPages: 0,
-          totalPriests: 0,
-        });
-      }
+      preQueries.push(
+        Ceremony.findOne({ name: new RegExp(ceremony, 'i'), isActive: true })
+          .select('_id').lean()
+          .then(doc => {
+            if (doc) filter['services.ceremonyId'] = doc._id;
+            return !!doc;
+          })
+      );
     }
 
-    // BUG-10 FIX: 'userId.location.city' cannot be queried via Mongoose populate dot-notation.
-    // Do a pre-query on User collection to get matching user IDs, then filter by priestProfile.userId.
+    // 2. City Lookup
     if (city) {
-      const cityRegex = new RegExp(city, 'i');
-      const cityUsers = await User.find({ 'location.city': cityRegex }).select('_id').lean();
-      const cityUserIds = cityUsers.map(u => u._id);
-      filter.userId = { $in: cityUserIds };
+      preQueries.push(
+        User.find({ 'location.city': new RegExp(city, 'i') })
+          .select('_id').lean()
+          .then(users => {
+            if (users.length > 0) filter.userId = { $in: users.map(u => u._id) };
+            return users.length > 0;
+          })
+      );
+    }
+
+    // 3. Search Term Lookup (Name)
+    if (req.query.search) {
+      preQueries.push(
+        User.find({ name: new RegExp(req.query.search, "i") })
+          .select('_id').lean()
+          .then(users => {
+            const userIds = users.map(u => u._id);
+            const searchRegex = new RegExp(req.query.search, "i");
+            filter.$or = [
+              { userId: { $in: userIds } },
+              { description: searchRegex }
+            ];
+            return true;
+          })
+      );
+    }
+
+    // Execute pre-queries in parallel
+    const results = await Promise.all(preQueries);
+    
+    // If a ceremony was requested but not found, return empty results immediately
+    if (ceremony && results[0] === false) {
+      return res.status(200).json({
+        priests: [],
+        currentPage: parseInt(page),
+        totalPages: 0,
+        totalPriests: 0,
+      });
     }
 
     // Filter by religious tradition
@@ -94,44 +119,48 @@ exports.searchPriests = async (req, res) => {
       filter['ratings.average'] = { $gte: parseFloat(minRating) };
     }
 
-    // NEW: Always filter by availability status 'available'
-    filter['currentAvailability.status'] = 'available';
+    // REMOVED: Strict 'available' filter. We want to show offline priests too for future bookings.
+    // Instead, we can sort by availability or show status in UI.
 
-    // If search term is provided, we need to find matching users first (by name)
-    // and then add them to the priest filter
-    if (req.query.search) {
-      const searchRegex = new RegExp(req.query.search, "i");
-      
-      // Find users matching the name
-      const matchingUsers = await User.find({ name: searchRegex }).select('_id').lean();
-      const matchingUserIds = matchingUsers.map(u => u._id);
+    // Add verification criteria (Approved or Pending)
+    // We combine this with existing $or if it exists, or create a new one
+    const verificationCriteria = {
+      $or: [
+        { verificationStatus: { $in: ['approved', 'pending'] } },
+        { isVerified: true }
+      ]
+    };
 
-      // Add to filter with OR condition for name, description, or ceremonies
-      filter.$or = [
-        { userId: { $in: matchingUserIds } },
-        { description: searchRegex },
-      ];
+    // If we already have an $or (from search term), we need to wrap everything in an $and
+    // to ensure both the search match AND the verification criteria are met.
+    let finalFilter = filter;
+    if (filter.$or) {
+      finalFilter = {
+        $and: [
+          filter,
+          verificationCriteria
+        ]
+      };
+    } else {
+      Object.assign(finalFilter, verificationCriteria);
     }
 
     // Get priest profiles with user details
-    const priests = await PriestProfile.find(filter)
+    const priests = await PriestProfile.find(finalFilter)
       .populate({
         path: "userId",
         select: "name email phone location languagesSpoken",
         populate: { path: "languagesSpoken", select: "name" }
       })
-      .populate("services.ceremonyId", "name") // For ceremony badges
-      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified services analytics.completionRate")
+      .populate("services.ceremonyId", "name")
+      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate")
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .lean()
       .exec();
 
-    // Filter out priests who are not verified (all priests are verified by default now)
-    const verifiedPriests = priests.filter(
-      (priest) => priest.isVerified !== false
-    );
+    const verifiedPriests = priests; 
 
     // Format response
     const formattedPriests = verifiedPriests.map((priest) => ({

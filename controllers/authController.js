@@ -24,7 +24,7 @@ exports.firebaseSync = async (req, res) => {
     const { uid, email, phone_number } = decodedToken;
 
     // Fields passed during first registration (can be empty on subsequent logins)
-    const { userType, name, pushToken, languagesSpoken, experience, description } = req.body;
+    const { userType, name, phone, pushToken, languagesSpoken, experience, description } = req.body;
 
     // Find the user directly by Firebase UID
     let user = await User.findOne({ firebaseUid: uid });
@@ -57,7 +57,7 @@ exports.firebaseSync = async (req, res) => {
        user = new User({
          name: name || decodedToken.name || 'New User',
          email: email || undefined,
-         phone: phone_number || `+tmp${Date.now()}`,
+         phone: phone_number || phone || `+tmp${Date.now()}`,
          firebaseUid: uid,
          userType: userType,
          expoPushToken: pushToken || null,

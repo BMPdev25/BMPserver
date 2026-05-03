@@ -5,11 +5,20 @@ const User = require('../models/user');
 const Booking = require('../models/booking');
 const Review = require('../models/review');
 
-// Security middleware to ensure these routes NEVER run in production
+// Security middleware to ensure these routes NEVER run in production 
+// and require a secret key in non-production environments.
 router.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ error: 'Forbidden: Test fixtures are disabled in production' });
   }
+
+  const secret = req.headers['x-maestro-secret'];
+  const expectedSecret = process.env.MAESTRO_SECRET;
+
+  if (!expectedSecret || secret !== expectedSecret) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid test secret key' });
+  }
+
   next();
 });
 
@@ -111,6 +120,60 @@ router.post('/seed/booking', async (req, res) => {
   } catch (error) {
     console.error('Seeding Error:', error);
     res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Promotion API: Upgrades a user to admin (Dev only)
+router.post('/promote', async (req, res) => {
+  try {
+    const { email, phone, role = 'admin' } = req.body;
+    const query = email ? { email } : { phone };
+    
+    const user = await User.findOneAndUpdate(
+      query,
+      { userType: role },
+      { new: true }
+    );
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      success: true,
+      message: `User ${user.email || user.phone} promoted to ${role}`,
+      user: { id: user._id, email: user.email, userType: user.userType }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Instantly verify a priest by email (Developer tool)
+router.post('/verify-priest', async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    
+    const PriestProfile = require("../models/priestProfile"); // Ensure imported
+    const profile = await PriestProfile.findOneAndUpdate(
+      { userId: user._id },
+      { 
+        verificationStatus: 'approved', 
+        isVerified: true,
+        'currentAvailability.status': 'available' 
+      },
+      { new: true }
+    );
+    
+    await User.findByIdAndUpdate(user._id, { isVerified: true });
+    
+    res.json({ 
+      success: true, 
+      message: `Priest ${email} verified successfully`, 
+      profile 
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
