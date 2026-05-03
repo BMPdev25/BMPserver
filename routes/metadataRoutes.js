@@ -11,4 +11,7 @@ router.get('/panchang', metadataController.getPanchang);
 // Get ceremony categories
 router.get('/categories', metadataController.getCategories);
 
+// Get upcoming festivals
+router.get('/festivals', metadataController.getFestivals);
+
 module.exports = router;

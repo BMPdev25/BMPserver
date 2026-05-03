@@ -129,7 +129,54 @@ exports.updatePrivacySettings = async (req, res, next) => {
   }
 };
 
-exports.deleteAccount = async (req, res, next) => {
+// Update notification preferences
+const updateNotificationPreferences = async (req, res) => {
+  try {
+    const { email, push } = req.body;
+    const userId = req.user.id;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (email) {
+      for (const key in email) {
+        user.notifications.email[key] = email[key];
+      }
+    }
+
+    if (push) {
+      for (const key in push) {
+        user.notifications.push[key] = push[key];
+      }
+    }
+
+    user.markModified('notifications');
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Notification preferences updated successfully',
+      data: {
+        notifications: user.notifications
+      }
+    });
+  } catch (error) {
+    console.error('Update notification preferences error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update notification preferences',
+      error: error.message
+    });
+  }
+};
+
+// Delete account
+const deleteAccount = async (req, res) => {
   try {
     const { password, confirmationText } = req.body;
     if (!password || confirmationText !== 'DELETE')

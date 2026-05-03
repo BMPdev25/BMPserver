@@ -12,6 +12,7 @@ const {
   verifyPayment,
   getPaymentDetails,
 } = require('../controllers/bookingController');
+const { bookInstantCeremony } = require('../controllers/devoteeController');
 const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 
@@ -45,6 +46,7 @@ router.use(protect);
 router.get('/', getBookings);
 router.get('/:bookingId', getBookingDetails);
 router.post('/', bookingCreationLimit, createBooking);
+router.post('/instant', bookingCreationLimit, bookInstantCeremony);
 
 // Booking status management
 router.put('/:bookingId/status', updateBookingStatus);

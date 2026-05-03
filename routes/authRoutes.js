@@ -7,12 +7,17 @@ const router = express.Router();
 // Synchronize Firebase Session / Create new User
 router.post('/sync', authController.firebaseSync);
 
-// Keep older aliases for backwards compatibility in dev but point them to sync
+// Keep older aliases for backwards compatibility
 router.post('/firebase-login', authController.firebaseSync);
 router.post('/register', authController.firebaseSync);
 router.post('/login', authController.firebaseSync);
+
+// Phone OTP Authentication
+router.post('/send-otp', authController.sendOtp);
+router.post('/verify-otp', authController.verifyOtp);
 
 // Save Expo push token (Requires Valid Session)
 router.post('/push-token', protect, authController.savePushToken);
 
 module.exports = router;
+
