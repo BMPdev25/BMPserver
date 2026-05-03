@@ -121,13 +121,13 @@ npm start
 
 ## 📡 API Reference (Highlights)
 
-| Category | Endpoint | Method | Description |
-| :--- | :--- | :--- | :--- |
-| **Auth** | `/api/auth/login` | POST | Authenticates user and returns JWT |
-| **Priest** | `/api/priest/profile` | GET | Fetches priest profile and services |
-| **Bookings** | `/api/bookings/create` | POST | Initiates a new ceremony booking |
-| **Payments** | `/api/wallet/verify` | POST | Verifies Razorpay transaction |
-| **Search** | `/api/search/priests` | GET | Search priests by language/location |
+| Category     | Endpoint               | Method | Description                         |
+|:-------------|:-----------------------|:-------|:------------------------------------|
+| **Auth**     | `/api/auth/login`      | POST   | Authenticates user and returns JWT  |
+| **Priest**   | `/api/priest/profile`  | GET    | Fetches priest profile and services |
+| **Bookings** | `/api/bookings/create` | POST   | Initiates a new ceremony booking    |
+| **Payments** | `/api/wallet/verify`   | POST   | Verifies Razorpay transaction       |
+| **Search**   | `/api/search/priests`  | GET    | Search priests by language/location |
 
 For a complete list of endpoints, refer to the [Routes](./routes/) directory.
 
@@ -135,7 +135,7 @@ For a complete list of endpoints, refer to the [Routes](./routes/) directory.
 
 ## 📚 Documentation
 
-- [Database Schema](./DB_SCHEMA.md) - Complete database schema documentation
+- [Database Schema](architecture/DB_SCHEMA.md) - Complete database schema documentation
 - [Testing Guide](./TESTING.md) - Testing documentation and guidelines
 - [Payment Flow](./architecture/payment_flow.md) - Logic for Razorpay integration
 - [Troubleshooting](./TROUBLESHOOTING.md) - Common issues and fixes
@@ -144,7 +144,7 @@ For a complete list of endpoints, refer to the [Routes](./routes/) directory.
 
 ## 🗄️ Database
 We use MongoDB for its flexibility with hierarchical data (like priest services).
-- [Database Schema Details](./DB_SCHEMA.md)
+- [Database Schema Details](architecture/DB_SCHEMA.md)
 - [Seeding Instructions](./scripts/)
 
 ---
