@@ -14,7 +14,8 @@ dotenv.config();
 const ceremoniesData = [
   {
     name: 'Satyanarayan Puja',
-    description: 'A puja performed to seek the blessings of Lord Satyanarayan, a form of Lord Vishnu.',
+    description:
+      'A puja performed to seek the blessings of Lord Satyanarayan, a form of Lord Vishnu.',
     category: 'puja',
     subcategory: 'general',
     duration: { typical: 120, minimum: 90, maximum: 180 },
@@ -26,11 +27,17 @@ const ceremoniesData = [
         { name: 'Rice', quantity: '1 kg' },
         { name: 'Betel leaves', quantity: '20' },
         { name: 'Flowers', quantity: '2 garlands' },
-        { name: 'Fruits', quantity: '5 types' }
-      ]
+        { name: 'Fruits', quantity: '5 types' },
+      ],
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'http://192.168.29.44:5000/public/images/satyanarayan.jpg', alt: 'Satyanarayan Puja', isPrimary: true }]
+    images: [
+      {
+        url: 'http://192.168.29.44:5000/public/images/satyanarayan.jpg',
+        alt: 'Satyanarayan Puja',
+        isPrimary: true,
+      },
+    ],
   },
   {
     name: 'Griha Pravesh',
@@ -40,14 +47,20 @@ const ceremoniesData = [
     duration: { typical: 180, minimum: 120, maximum: 240 },
     pricing: { basePrice: 5100, priceRange: { min: 5100, max: 11000 } },
     requirements: {
-       materials: [
-         { name: 'Coconut', quantity: '2' },
-         { name: 'Mango leaves', quantity: '1 bunch' },
-         { name: 'Ghee', quantity: '500g' }
-       ]
+      materials: [
+        { name: 'Coconut', quantity: '2' },
+        { name: 'Mango leaves', quantity: '1 bunch' },
+        { name: 'Ghee', quantity: '500g' },
+      ],
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'http://192.168.29.44:5000/public/images/grihapravesh.jpg', alt: 'Griha Pravesh', isPrimary: true }]
+    images: [
+      {
+        url: 'http://192.168.29.44:5000/public/images/grihapravesh.jpg',
+        alt: 'Griha Pravesh',
+        isPrimary: true,
+      },
+    ],
   },
   {
     name: 'Ganapati Homa',
@@ -57,14 +70,20 @@ const ceremoniesData = [
     duration: { typical: 90, minimum: 60, maximum: 120 },
     pricing: { basePrice: 3100, priceRange: { min: 3100, max: 7100 } },
     requirements: {
-       materials: [
-         { name: 'Modak', quantity: '21' },
-         { name: 'Durva grass', quantity: '1 bunch' }
-       ]
+      materials: [
+        { name: 'Modak', quantity: '21' },
+        { name: 'Durva grass', quantity: '1 bunch' },
+      ],
     },
     religiousTraditions: ['Hindu'],
-    images: [{ url: 'http://192.168.29.44:5000/public/images/ganapati.jpg', alt: 'Ganapati', isPrimary: true }]
-  }
+    images: [
+      {
+        url: 'http://192.168.29.44:5000/public/images/ganapati.jpg',
+        alt: 'Ganapati',
+        isPrimary: true,
+      },
+    ],
+  },
 ];
 
 const seedDB = async () => {
@@ -83,8 +102,8 @@ const seedDB = async () => {
     // 1. CREATE CEREMONIES
     const createdCeremonies = await Ceremony.insertMany(ceremoniesData);
     console.log('Ceremonies seeded');
-    const satyanarayan = createdCeremonies.find(c => c.name === 'Satyanarayan Puja');
-    const grihaPravesh = createdCeremonies.find(c => c.name === 'Griha Pravesh');
+    const satyanarayan = createdCeremonies.find((c) => c.name === 'Satyanarayan Puja');
+    const grihaPravesh = createdCeremonies.find((c) => c.name === 'Griha Pravesh');
 
     // 2. CREATE USERS
     const salt = await bcrypt.genSalt(10);
@@ -97,7 +116,7 @@ const seedDB = async () => {
       email: 'devotee@example.com',
       password: hashedPassword,
       userType: 'devotee',
-      phone: '9876543210'
+      phone: '9876543210',
     });
 
     // Test Users
@@ -107,22 +126,22 @@ const seedDB = async () => {
         email: 'sunny@bmp.com',
         password: testPassword,
         userType: 'devotee',
-        phone: '9999999991'
+        phone: '9999999991',
       },
       {
         name: 'Anish',
         email: 'anish@bmp.com',
         password: testPassword,
         userType: 'devotee',
-        phone: '9999999992'
+        phone: '9999999992',
       },
       {
         name: 'Anirudh',
         email: 'anirudh@bmp.com',
         password: testPassword,
         userType: 'devotee',
-        phone: '9999999993'
-      }
+        phone: '9999999993',
+      },
     ]);
 
     // Priest 1
@@ -131,7 +150,7 @@ const seedDB = async () => {
       email: 'priest1@example.com',
       password: hashedPassword,
       userType: 'priest',
-      phone: '9876543211'
+      phone: '9876543211',
     });
 
     // Priest 2
@@ -140,7 +159,7 @@ const seedDB = async () => {
       email: 'priest2@example.com',
       password: hashedPassword,
       userType: 'priest',
-      phone: '9876543212'
+      phone: '9876543212',
     });
     console.log('Users seeded');
 
@@ -154,14 +173,14 @@ const seedDB = async () => {
       profilePicture: 'http://192.168.29.44:5000/public/images/priest1.jpg',
       location: {
         type: 'Point',
-        coordinates: [78.35, 17.45] // Hyderabad
+        coordinates: [78.35, 17.45], // Hyderabad
       },
       services: [
         { ceremonyId: satyanarayan._id, price: 2500, durationMinutes: 120 },
-        { ceremonyId: grihaPravesh._id, price: 5500, durationMinutes: 180 }
+        { ceremonyId: grihaPravesh._id, price: 5500, durationMinutes: 180 },
       ],
       isVerified: true,
-      rating: { average: 4.8, count: 1 }
+      rating: { average: 4.8, count: 1 },
     });
 
     const priest2Profile = await PriestProfile.create({
@@ -173,66 +192,64 @@ const seedDB = async () => {
       profilePicture: 'http://192.168.29.44:5000/public/images/priest2.jpg',
       location: {
         type: 'Point',
-        coordinates: [78.40, 17.40] // Hyderabad slightly far
+        coordinates: [78.4, 17.4], // Hyderabad slightly far
       },
-      services: [
-        { ceremonyId: satyanarayan._id, price: 2200, durationMinutes: 110 }
-      ],
+      services: [{ ceremonyId: satyanarayan._id, price: 2200, durationMinutes: 110 }],
       isVerified: true,
-      rating: { average: 0, count: 0 }
+      rating: { average: 0, count: 0 },
     });
     console.log('Priest Profiles seeded');
 
     // 4. CREATE BOOKINGS
     let booking1;
     try {
-        booking1 = await Booking.create({
-            devoteeId: devotee._id,
-            priestId: priest1._id,
-            ceremonyId: satyanarayan._id,
-            ceremonyType: satyanarayan.name,
-            date: new Date(Date.now() + 86400000), // Tomorrow
-            startTime: '10:00',
-            endTime: '12:00',
-            status: 'confirmed',
-            paymentStatus: 'completed', // 'paid' was invalid
-            basePrice: 2000,
-            platformFee: 500,
-            totalAmount: 2500,
-            location: {
-                address: 'Devotee Home, Hyderabad',
-                city: 'Hyderabad',
-                coordinates: [78.35, 17.45]
-            }
-        });
-        console.log('Booking seeded');
+      booking1 = await Booking.create({
+        devoteeId: devotee._id,
+        priestId: priest1._id,
+        ceremonyId: satyanarayan._id,
+        ceremonyType: satyanarayan.name,
+        date: new Date(Date.now() + 86400000), // Tomorrow
+        startTime: '10:00',
+        endTime: '12:00',
+        status: 'confirmed',
+        paymentStatus: 'completed', // 'paid' was invalid
+        basePrice: 2000,
+        platformFee: 500,
+        totalAmount: 2500,
+        location: {
+          address: 'Devotee Home, Hyderabad',
+          city: 'Hyderabad',
+          coordinates: [78.35, 17.45],
+        },
+      });
+      console.log('Booking seeded');
     } catch (e) {
-        console.log('Skipping booking seed (model might differ):', e.message);
+      console.log('Skipping booking seed (model might differ):', e.message);
     }
-    
+
     // 5. CREATE RATINGS
     try {
-        if (booking1) {
-            await Rating.create({
-                bookingId: booking1._id.toString(),
-                userId: devotee._id.toString(), // Schema says type: String
-                priestId: priest1._id.toString(),
-                rating: 5,
-                categories: {
-                    punctuality: 5,
-                    knowledge: 5,
-                    behavior: 5,
-                    overall: 5
-                },
-                review: 'Pandit ji was very knowledgeable and punctual.',
-                ceremonyType: satyanarayan.name,
-                ceremonyDate: new Date().toISOString(),
-                createdAt: new Date()
-            });
-            console.log('Rating seeded');
-        }
+      if (booking1) {
+        await Rating.create({
+          bookingId: booking1._id.toString(),
+          userId: devotee._id.toString(), // Schema says type: String
+          priestId: priest1._id.toString(),
+          rating: 5,
+          categories: {
+            punctuality: 5,
+            knowledge: 5,
+            behavior: 5,
+            overall: 5,
+          },
+          review: 'Pandit ji was very knowledgeable and punctual.',
+          ceremonyType: satyanarayan.name,
+          ceremonyDate: new Date().toISOString(),
+          createdAt: new Date(),
+        });
+        console.log('Rating seeded');
+      }
     } catch (e) {
-         console.log('Skipping rating seed:', e.message);
+      console.log('Skipping rating seed:', e.message);
     }
 
     process.exit();

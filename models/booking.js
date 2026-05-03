@@ -11,7 +11,9 @@ const bookingSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     // Required except for instant booking in 'searching' phase
-    required: function() { return this.status !== 'searching'; },
+    required: function () {
+      return this.status !== 'searching';
+    },
   },
   ceremonyType: {
     type: String,
@@ -42,11 +44,21 @@ const bookingSchema = new mongoose.Schema({
     coordinates: {
       type: { type: String, enum: ['Point'], default: 'Point' },
       coordinates: [Number], // [lng, lat]
-    }
+    },
   },
   status: {
     type: String,
-    enum: ['pending', 'searching', 'requested', 'confirmed', 'arrived', 'in_progress', 'completed', 'cancelled', 'expired'],
+    enum: [
+      'pending',
+      'searching',
+      'requested',
+      'confirmed',
+      'arrived',
+      'in_progress',
+      'completed',
+      'cancelled',
+      'expired',
+    ],
     default: 'pending',
   },
   bookingType: {
@@ -150,33 +162,39 @@ const bookingSchema = new mongoose.Schema({
     },
   },
   // Real-time Status Tracking
-  statusHistory: [{
-    status: {
-      type: String,
-      required: true,
+  statusHistory: [
+    {
+      status: {
+        type: String,
+        required: true,
+      },
+      timestamp: {
+        type: Date,
+        default: Date.now,
+      },
+      updatedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      reason: {
+        type: String,
+      },
     },
-    timestamp: {
-      type: Date,
-      default: Date.now,
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-    },
-    reason: {
-      type: String,
-    },
-  }],
+  ],
   // Auto-categorization fields
   category: {
     type: String,
     enum: ['today', 'upcoming', 'completed'],
-    default: function() {
+    default: function () {
       const now = new Date();
       const bookingDate = new Date(this.date);
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const bookingDay = new Date(bookingDate.getFullYear(), bookingDate.getMonth(), bookingDate.getDate());
-      
+      const bookingDay = new Date(
+        bookingDate.getFullYear(),
+        bookingDate.getMonth(),
+        bookingDate.getDate()
+      );
+
       if (this.status === 'completed') return 'completed';
       if (bookingDay.getTime() === today.getTime()) return 'today';
       if (bookingDate > now) return 'upcoming';
@@ -185,8 +203,8 @@ const bookingSchema = new mongoose.Schema({
   },
   isTestRecord: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 });
 
 // Create indexes for better query performance
@@ -198,18 +216,18 @@ bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ createdAt: -1 });
 
 // Update the updatedAt field before saving
-bookingSchema.pre('save', function(next) {
+bookingSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
 });
 
 // Virtual for checking if booking is upcoming
-bookingSchema.virtual('isUpcoming').get(function() {
+bookingSchema.virtual('isUpcoming').get(function () {
   return this.date > new Date() && this.status === 'confirmed';
 });
 
 // Virtual for checking if booking can be cancelled
-bookingSchema.virtual('canCancel').get(function() {
+bookingSchema.virtual('canCancel').get(function () {
   const hoursUntilBooking = (this.date - new Date()) / (1000 * 60 * 60);
   return hoursUntilBooking > 24 && this.status === 'confirmed';
 });

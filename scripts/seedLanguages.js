@@ -22,7 +22,7 @@ const languages = [
   { rank: 17, name: 'Nepali', nativeName: 'नेपाली', code: 'NE', speakersInMillions: 3 },
   { rank: 18, name: 'Sindhi', nativeName: 'سنڌي', code: 'SD', speakersInMillions: 3 },
   { rank: 19, name: 'Konkani', nativeName: 'कोंकणी', code: 'KOK', speakersInMillions: 2.5 },
-  { rank: 20, name: 'Dogri', nativeName: 'डोगरी', code: 'DOI', speakersInMillions: 2 }
+  { rank: 20, name: 'Dogri', nativeName: 'डोगरी', code: 'DOI', speakersInMillions: 2 },
 ];
 
 async function seedLanguages() {
@@ -42,8 +42,10 @@ async function seedLanguages() {
     // Display seeded languages
     const seededLanguages = await Language.find().sort({ rank: 1 });
     console.log('\nSeeded Languages:');
-    seededLanguages.forEach(lang => {
-      console.log(`${lang.rank}. ${lang.name} (${lang.nativeName}) - ${lang.speakersInMillions}M speakers`);
+    seededLanguages.forEach((lang) => {
+      console.log(
+        `${lang.rank}. ${lang.name} (${lang.nativeName}) - ${lang.speakersInMillions}M speakers`
+      );
     });
 
     process.exit(0);

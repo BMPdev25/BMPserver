@@ -26,9 +26,9 @@ async function recalculateReliability(priestUserId) {
   // Persist to PriestProfile
   await PriestProfile.findOneAndUpdate(
     { userId: priestUserId },
-    { 
+    {
       'analytics.completionRate': completionRate,
-      'cancelledCount': cancelled 
+      cancelledCount: cancelled,
     },
     { new: true }
   );
@@ -60,7 +60,12 @@ async function updateDevoteeReliability(devoteeUserId, actionType) {
   if (!user || user.userType !== 'devotee') return;
 
   if (!user.devoteeReliability) {
-    user.devoteeReliability = { score: 100, cancellationCount: 0, lateCancellationCount: 0, completedCount: 0 };
+    user.devoteeReliability = {
+      score: 100,
+      cancellationCount: 0,
+      lateCancellationCount: 0,
+      completedCount: 0,
+    };
   }
 
   if (actionType === 'completion') {

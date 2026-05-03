@@ -7,7 +7,7 @@ const { protect, priestOnly } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 // Public / Devotee accessible routes
-router.get("/available", priestController.getAvailablePujaris);
+router.get('/available', priestController.getAvailablePujaris);
 
 // All following routes need authentication and priest role
 router.use(protect);
@@ -18,7 +18,6 @@ router.put('/profile', priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
 router.get('/profile-completion', priestController.getProfileCompletion);
 router.put('/status', priestController.toggleStatus);
-
 
 // Booking routes
 router.get('/bookings', priestController.getBookings);
@@ -41,9 +40,9 @@ router.put('/notifications/mark-all-read', priestController.markAllNotifications
 
 // Document upload route
 const multer = require('multer');
-const upload = multer({ 
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 router.post('/documents', upload.single('document'), priestController.uploadDocument);
 router.post('/submit-verification', priestController.submitVerification);

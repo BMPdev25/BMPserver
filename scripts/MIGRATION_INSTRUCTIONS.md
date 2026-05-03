@@ -26,6 +26,7 @@ db.users.findOne({ userType: "priest" })
 3. Navigate to the `users` collection
 4. Click on "Aggregations" tab
 5. Add this pipeline:
+
 ```json
 [
   {
@@ -46,6 +47,7 @@ db.users.findOne({ userType: "priest" })
   }
 ]
 ```
+
 6. Click "Run"
 
 ## Option 3: Simple Node Script (if mongodb package is installed)
@@ -58,12 +60,11 @@ async function migrate() {
   const uri = process.env.MONGODB_URI || 'your_connection_string_here';
   const client = await MongoClient.connect(uri);
   const db = client.db();
-  
-  const result = await db.collection('users').updateMany(
-    { languagesSpoken: { $exists: false } },
-    { $set: { languagesSpoken: [] } }
-  );
-  
+
+  const result = await db
+    .collection('users')
+    .updateMany({ languagesSpoken: { $exists: false } }, { $set: { languagesSpoken: [] } });
+
   console.log(`Updated ${result.modifiedCount} users`);
   await client.close();
 }

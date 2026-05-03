@@ -12,7 +12,7 @@ exports.submitRating = async (req, res) => {
       review,
       ceremonyType,
       ceremonyDate,
-      timestamp
+      timestamp,
     } = req.body;
 
     // Get userId from authenticated user
@@ -22,7 +22,7 @@ exports.submitRating = async (req, res) => {
     if (!bookingId || !priestId || !rating || !categories || !ceremonyType || !ceremonyDate) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields'
+        message: 'Missing required fields',
       });
     }
 
@@ -30,7 +30,7 @@ exports.submitRating = async (req, res) => {
     if (rating < 1 || rating > 5) {
       return res.status(400).json({
         success: false,
-        message: 'Rating must be between 1 and 5'
+        message: 'Rating must be between 1 and 5',
       });
     }
 
@@ -39,17 +39,23 @@ exports.submitRating = async (req, res) => {
     if (!punctuality || !knowledge || !behavior || !overall) {
       return res.status(400).json({
         success: false,
-        message: 'All category ratings are required'
+        message: 'All category ratings are required',
       });
     }
 
-    if (punctuality < 1 || punctuality > 5 || 
-        knowledge < 1 || knowledge > 5 || 
-        behavior < 1 || behavior > 5 || 
-        overall < 1 || overall > 5) {
+    if (
+      punctuality < 1 ||
+      punctuality > 5 ||
+      knowledge < 1 ||
+      knowledge > 5 ||
+      behavior < 1 ||
+      behavior > 5 ||
+      overall < 1 ||
+      overall > 5
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'All category ratings must be between 1 and 5'
+        message: 'All category ratings must be between 1 and 5',
       });
     }
 
@@ -58,7 +64,7 @@ exports.submitRating = async (req, res) => {
     if (existingRating) {
       return res.status(400).json({
         success: false,
-        message: 'You have already rated this booking'
+        message: 'You have already rated this booking',
       });
     }
 
@@ -72,7 +78,7 @@ exports.submitRating = async (req, res) => {
       review: review || '',
       ceremonyType,
       ceremonyDate,
-      timestamp: timestamp || new Date().toISOString()
+      timestamp: timestamp || new Date().toISOString(),
     });
 
     await newRating.save();
@@ -80,23 +86,22 @@ exports.submitRating = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Rating submitted successfully',
-      data: newRating
+      data: newRating,
     });
-
   } catch (error) {
     console.error('Submit rating error:', error);
-    
+
     // Handle duplicate key error
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: 'You have already rated this booking'
+        message: 'You have already rated this booking',
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Server error while submitting rating'
+      message: 'Server error while submitting rating',
     });
   }
 };
@@ -113,7 +118,7 @@ exports.getPriestRatings = async (req, res) => {
       .skip((page - 1) * limit);
 
     const totalRatings = await Rating.countDocuments({ priestId });
-    
+
     // Calculate average rating
     const avgRatingResult = await Rating.aggregate([
       { $match: { priestId } },
@@ -124,18 +129,21 @@ exports.getPriestRatings = async (req, res) => {
           avgPunctuality: { $avg: '$categories.punctuality' },
           avgKnowledge: { $avg: '$categories.knowledge' },
           avgBehavior: { $avg: '$categories.behavior' },
-          avgOverall: { $avg: '$categories.overall' }
-        }
-      }
+          avgOverall: { $avg: '$categories.overall' },
+        },
+      },
     ]);
 
-    const averages = avgRatingResult.length > 0 ? avgRatingResult[0] : {
-      avgRating: 0,
-      avgPunctuality: 0,
-      avgKnowledge: 0,
-      avgBehavior: 0,
-      avgOverall: 0
-    };
+    const averages =
+      avgRatingResult.length > 0
+        ? avgRatingResult[0]
+        : {
+            avgRating: 0,
+            avgPunctuality: 0,
+            avgKnowledge: 0,
+            avgBehavior: 0,
+            avgOverall: 0,
+          };
 
     res.json({
       success: true,
@@ -144,15 +152,14 @@ exports.getPriestRatings = async (req, res) => {
         totalRatings,
         averages,
         currentPage: page,
-        totalPages: Math.ceil(totalRatings / limit)
-      }
+        totalPages: Math.ceil(totalRatings / limit),
+      },
     });
-
   } catch (error) {
     console.error('Get priest ratings error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching ratings'
+      message: 'Server error while fetching ratings',
     });
   }
 };
@@ -176,15 +183,14 @@ exports.getUserRatings = async (req, res) => {
         ratings,
         totalRatings,
         currentPage: page,
-        totalPages: Math.ceil(totalRatings / limit)
-      }
+        totalPages: Math.ceil(totalRatings / limit),
+      },
     });
-
   } catch (error) {
     console.error('Get user ratings error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching user ratings'
+      message: 'Server error while fetching user ratings',
     });
   }
 };

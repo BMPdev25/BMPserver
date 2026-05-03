@@ -28,7 +28,9 @@ async function processBookingCompletion(bookingId) {
     throw new Error(`Booking not found: ${bookingId}`);
   }
   if (booking.status !== 'completed') {
-    throw new Error(`Booking ${bookingId} is not in 'completed' status (current: ${booking.status})`);
+    throw new Error(
+      `Booking ${bookingId} is not in 'completed' status (current: ${booking.status})`
+    );
   }
 
   // Check if already processed (idempotency)
@@ -46,7 +48,8 @@ async function processBookingCompletion(bookingId) {
   // platformFee = 5% on top (already stored on the booking)
   // totalAmount = basePrice + platformFee = what devotee paid
   const priestShare = booking.basePrice;
-  const commission = booking.platformFee || Math.round(booking.basePrice * COMMISSION_RATE * 100) / 100;
+  const commission =
+    booking.platformFee || Math.round(booking.basePrice * COMMISSION_RATE * 100) / 100;
   const totalAmount = booking.totalAmount || priestShare + commission;
 
   // 3. Find or create Wallet

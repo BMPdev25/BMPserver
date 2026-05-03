@@ -7,11 +7,11 @@ describe('PriestProfile Model Test', () => {
       userId: new mongoose.Types.ObjectId(),
       experience: 5,
       religiousTradition: 'Vedic',
-      serviceRadiusKm: 20
+      serviceRadiusKm: 20,
     };
     const validProfile = new PriestProfile(profileData);
     const savedProfile = await validProfile.save();
-    
+
     expect(savedProfile._id).toBeDefined();
     expect(savedProfile.userId).toEqual(profileData.userId);
     expect(savedProfile.experience).toBe(5);
@@ -21,12 +21,14 @@ describe('PriestProfile Model Test', () => {
   it('should validate verificationDocuments structure', async () => {
     const profileData = {
       userId: new mongoose.Types.ObjectId(),
-      verificationDocuments: [{
-        type: 'government_id',
-        data: Buffer.from('test'),
-        contentType: 'application/pdf',
-        fileName: 'id.pdf'
-      }]
+      verificationDocuments: [
+        {
+          type: 'government_id',
+          data: Buffer.from('test'),
+          contentType: 'application/pdf',
+          fileName: 'id.pdf',
+        },
+      ],
     };
     const profile = new PriestProfile(profileData);
     const savedProfile = await profile.save();

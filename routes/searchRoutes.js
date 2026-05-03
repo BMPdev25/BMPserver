@@ -8,7 +8,7 @@ const {
   getCeremonyCategories,
   getSearchSuggestions,
 } = require('../controllers/searchController');
-const {protect} = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 
 // Rate limiting for search operations

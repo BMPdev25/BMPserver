@@ -26,10 +26,12 @@ const reviewSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
-  tags: [{
-    type: String,
-    trim: true,
-  }],
+  tags: [
+    {
+      type: String,
+      trim: true,
+    },
+  ],
   role: {
     type: String,
     enum: ['priest_to_devotee', 'devotee_to_priest'],
@@ -45,8 +47,8 @@ const reviewSchema = new mongoose.Schema({
   },
   isTestRecord: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 });
 
 // Ensure a user can only review a booking once per role

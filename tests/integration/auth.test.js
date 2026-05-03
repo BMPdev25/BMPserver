@@ -15,16 +15,14 @@ describe('Auth API Integration', () => {
   });
 
   it('should register a new devotee user', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Integration Test User',
-        email: 'integration@test.com',
-        password: 'password123',
-        phone: '9876543210',
-        userType: 'devotee'
-      });
-    
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'Integration Test User',
+      email: 'integration@test.com',
+      password: 'password123',
+      phone: '9876543210',
+      userType: 'devotee',
+    });
+
     expect(res.statusCode).toEqual(201);
     expect(res.body).toHaveProperty('token');
     expect(res.body).toHaveProperty('_id');
@@ -40,9 +38,9 @@ describe('Auth API Integration', () => {
         password: 'password123',
         phone: '9876543211',
         userType: 'priest',
-        languagesSpoken: languageId ? [languageId] : []
+        languagesSpoken: languageId ? [languageId] : [],
       });
-    
+
     expect(res.statusCode).toEqual(201);
     expect(res.body).toHaveProperty('token');
     expect(res.body).toHaveProperty('_id');
@@ -50,40 +48,34 @@ describe('Auth API Integration', () => {
   });
 
   it('should fail to register priest without languages', async () => {
-    const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Priest No Lang',
-        email: 'priestnolang@test.com',
-        password: 'password123',
-        phone: '9876543212',
-        userType: 'priest',
-        languagesSpoken: []
-      });
-    
+    const res = await request(app).post('/api/auth/register').send({
+      name: 'Priest No Lang',
+      email: 'priestnolang@test.com',
+      password: 'password123',
+      phone: '9876543212',
+      userType: 'priest',
+      languagesSpoken: [],
+    });
+
     expect(res.statusCode).toEqual(400);
     expect(res.body.message).toContain('language');
   });
 
   it('should login an existing user', async () => {
     // First register
-    await request(app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Login User',
-        email: 'login@test.com',
-        password: 'password123',
-        phone: '1122334455',
-        userType: 'devotee'
-      });
+    await request(app).post('/api/auth/register').send({
+      name: 'Login User',
+      email: 'login@test.com',
+      password: 'password123',
+      phone: '1122334455',
+      userType: 'devotee',
+    });
 
     // Then login
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({
-        identifier: 'login@test.com',
-        password: 'password123'
-      });
+    const res = await request(app).post('/api/auth/login').send({
+      identifier: 'login@test.com',
+      password: 'password123',
+    });
 
     expect(res.statusCode).toEqual(200);
     expect(res.body).toHaveProperty('token');

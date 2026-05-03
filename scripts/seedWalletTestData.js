@@ -59,7 +59,9 @@ async function seed() {
     for (const booking of completedBookings) {
       try {
         const result = await processBookingCompletion(booking._id);
-        console.log(`  ✓ Booking ${booking._id}: ₹${result.transaction.amount} → Priest ${booking.priestId}`);
+        console.log(
+          `  ✓ Booking ${booking._id}: ₹${result.transaction.amount} → Priest ${booking.priestId}`
+        );
         successCount++;
       } catch (err) {
         console.log(`  ✗ Booking ${booking._id}: ${err.message}`);
@@ -73,12 +75,14 @@ async function seed() {
     const wallets = await Wallet.find().populate('priestId', 'name');
     console.log('\n--- Wallet Summary ---');
     for (const w of wallets) {
-      console.log(`  ${w.priestId?.name || w.priestId}: ₹${w.currentBalance} (credited: ₹${w.totalCredited})`);
+      console.log(
+        `  ${w.priestId?.name || w.priestId}: ₹${w.currentBalance} (credited: ₹${w.totalCredited})`
+      );
     }
 
     // 8. Show company revenue
     const totalRevenue = await CompanyRevenue.aggregate([
-      { $group: { _id: null, total: { $sum: '$commissionAmount' } } }
+      { $group: { _id: null, total: { $sum: '$commissionAmount' } } },
     ]);
     console.log(`\nTotal platform revenue: ₹${totalRevenue[0]?.total || 0}`);
 
