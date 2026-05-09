@@ -220,6 +220,45 @@ const uploadDocument = async (userId, file, documentType) => {
   return { message: 'Document uploaded successfully' };
 };
 
+const getProfileCompletion = async (userId) => {
+  const profile = await getProfile(userId);
+  const user = profile.userId;
+
+  const fields = [
+    { name: 'basicInfo', check: () => user && user.name && user.email },
+    { name: 'languages', check: () => user && user.languagesSpoken && user.languagesSpoken.length > 0 },
+    { name: 'description', check: () => profile.description && profile.description.length > 0 },
+    { name: 'experience', check: () => profile.experience !== undefined && profile.experience !== null },
+    { name: 'profilePicture', check: () => profile.profilePicture && profile.profilePicture.length > 0 },
+    { name: 'services', check: () => profile.services && profile.services.length > 0 },
+    { name: 'location', check: () => profile.location && profile.location.coordinates && (profile.location.coordinates[0] !== 0 || profile.location.coordinates[1] !== 0) },
+    { name: 'documents', check: () => profile.verificationDocuments && profile.verificationDocuments.length > 0 },
+  ];
+
+  const completedFields = [];
+  const missingFields = [];
+
+  fields.forEach(field => {
+    if (field.check()) {
+      completedFields.push(field.name);
+    } else {
+      missingFields.push(field.name);
+    }
+  });
+
+  const totalFields = fields.length;
+  const completedCount = completedFields.length;
+  const completionPercentage = Math.round((completedCount / totalFields) * 100);
+
+  return {
+    completionPercentage,
+    completedFields,
+    missingFields,
+    isVerified: profile.isVerified || false,
+    canAcceptRequests: (profile.isVerified || false) && profile.services && profile.services.length > 0
+  };
+};
+
 module.exports = {
   updateProfile,
   getProfile,
@@ -229,4 +268,5 @@ module.exports = {
   getNotifications,
   markNotificationAsRead,
   uploadDocument,
+  getProfileCompletion,
 };

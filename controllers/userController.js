@@ -130,7 +130,7 @@ exports.updatePrivacySettings = async (req, res, next) => {
 };
 
 // Update notification preferences
-const updateNotificationPreferences = async (req, res) => {
+exports.updateNotificationPreferences = async (req, res) => {
   try {
     const { email, push } = req.body;
     const userId = req.user.id;
@@ -176,7 +176,7 @@ const updateNotificationPreferences = async (req, res) => {
 };
 
 // Delete account
-const deleteAccount = async (req, res) => {
+exports.deleteAccount = async (req, res, next) => {
   try {
     const { password, confirmationText } = req.body;
     if (!password || confirmationText !== 'DELETE')

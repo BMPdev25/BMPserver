@@ -262,6 +262,34 @@ exports.getNotifications = async (req, res, next) => {
   }
 };
 
+// Mark notification as read
+exports.markNotificationAsRead = async (req, res, next) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notificationId, userId: req.user.id, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    res.status(200).json({ message: 'Notification marked as read', notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mark all notifications as read
+exports.markAllNotificationsAsRead = async (req, res, next) => {
+  try {
+    await Notification.updateMany(
+      { userId: req.user.id, read: false, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() }
+    );
+    res.status(200).json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // --- Address Management ---
 exports.getAddresses = async (req, res, next) => {
   try {

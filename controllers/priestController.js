@@ -39,6 +39,15 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
+exports.getProfileCompletion = async (req, res, next) => {
+  try {
+    const completionData = await priestService.getProfileCompletion(req.user.id);
+    res.status(200).json(completionData);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get priest's bookings
 exports.getBookings = async (req, res, next) => {
   try {
