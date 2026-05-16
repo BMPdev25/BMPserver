@@ -197,7 +197,7 @@ exports.getPendingActions = async (req, res, next) => {
       status: 'confirmed',
     });
 
-    const actions = dueBookings.data
+    const actions = dueBookings.data.all
       .filter((b) => new Date(b.date) < now)
       .map((b) => ({
         ...b,
