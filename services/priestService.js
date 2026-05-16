@@ -193,11 +193,17 @@ const markNotificationAsRead = async (userId, notificationId) => {
 };
 
 const uploadDocument = async (userId, file, documentType) => {
-  const profile = await PriestProfile.findOne({ userId });
+  let profile = await PriestProfile.findOne({ userId });
   if (!profile) {
-    const error = new Error('Profile not found');
-    error.statusCode = 404;
-    throw error;
+    profile = new PriestProfile({
+      userId,
+      experience: 0,
+      services: [],
+      location: { type: 'Point', coordinates: [0, 0] },
+      verificationDocuments: [],
+      templesAffiliated: [],
+    });
+    // Don't save yet, it will be saved at the end of this function
   }
 
   if (documentType === 'profile_picture') {
