@@ -153,6 +153,16 @@ const priestProfileSchema = new mongoose.Schema({
     default: 'incomplete',
   },
   rejectionReason: String,
+  onboardingCurrentStep: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 6,
+},
+  onboardingCompleted: {
+    type: Boolean,
+    default: false,
+  },
   sampradaya: String,
 
   // Real-time status
@@ -203,7 +213,7 @@ const priestProfileSchema = new mongoose.Schema({
         enum: ['government_id', 'religious_certificate', 'other'],
         required: true,
       },
-      data: Buffer,
+      data: String,
       contentType: String,
       fileName: String,
       uploadDate: { type: Date, default: Date.now },
