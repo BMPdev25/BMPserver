@@ -148,40 +148,118 @@ exports.updateBookingStatus = async (req, res, next) => {
 // Get available pujaris
 exports.getAvailablePujaris = async (req, res, next) => {
   try {
-    const { ceremonyId, lat, lng, radius = 10 } = req.query;
-    if (!ceremonyId) {
-      return res.status(400).json({ message: 'ceremonyId is required' });
-    }
+    const {
+      ceremonyId,
+      lat,
+      lng,
+      radius = 50,
+      page = 1,
+      limit = 10,
+      sort = 'rating',
+      minRating,
+      minPrice,
+      maxPrice,
+      languages,
+    } = req.query;
 
+    // Build geo filter (optional)
     let geoFilter = {};
     if (lat && lng) {
       geoFilter = {
         location: {
           $near: {
-            $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+            $geometry: {
+              type: 'Point',
+              coordinates: [parseFloat(lng), parseFloat(lat)],
+            },
             $maxDistance: parseFloat(radius) * 1000,
           },
         },
       };
     }
 
-    const pujarisDocs = await PriestProfile.find({
+    // Build base filter
+    const filter = {
       ...geoFilter,
-      'services.ceremonyId': ceremonyId,
       isVerified: true,
-    })
-      .populate('userId', 'name phone languagesSpoken location')
-      .populate('services.ceremonyId', 'name requirements durationMinutes')
-      .lean();
+    };
+
+    // Ceremony filter (optional now)
+    if (ceremonyId) {
+      filter['services.ceremonyId'] = ceremonyId;
+    }
+
+    // Rating filter
+    if (minRating) {
+      filter['ratings.average'] = { $gte: parseFloat(minRating) };
+    }
+
+    // Language filter
+    if (languages) {
+      const langArray = Array.isArray(languages) ? languages : [languages];
+      filter['languagesSpoken'] = { $in: langArray };
+    }
+
+    // Price filter (on services array)
+    if (minPrice || maxPrice) {
+      const priceFilter = {};
+      if (minPrice) priceFilter.$gte = parseFloat(minPrice);
+      if (maxPrice) priceFilter.$lte = parseFloat(maxPrice);
+      filter['services.price'] = priceFilter;
+    }
+
+    // Sort mapping
+    const sortMap = {
+      rating:     { 'ratings.average': -1 },
+      distance:   {}, // geo sort handled by $near automatically
+      price_asc:  { 'services.price': 1 },
+      price_desc: { 'services.price': -1 },
+    };
+    const sortQuery = sortMap[sort] || sortMap.rating;
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [pujarisDocs, total] = await Promise.all([
+      PriestProfile.find(filter)
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(limitNum)
+        .populate('userId', 'name profilePicture languagesSpoken')
+        .lean(),
+      PriestProfile.countDocuments(filter),
+    ]);
 
     const pujaris = pujarisDocs.map((p) => ({
-      ...p,
+      _id: p._id,
+      userId: p.userId?._id,
       name: p.userId?.name || 'Unknown Priest',
-      phone: p.userId?.phone,
-      rating: p.ratings,
+      profilePicture: p.profilePicture || p.userId?.profilePicture,
+      primarySpecialization: p.specializations?.[0]?.name || '',
+      rating: p.ratings?.average || 0,
+      reviewCount: p.ratings?.count || 0,
+      startingPrice: p.services?.length
+        ? Math.min(...p.services.map((s) => s.price))
+        : 0,
+      experienceYears: p.experience || 0,
+      services: p.services || [],
+      verificationStatus: p.verificationStatus,
     }));
 
-    res.status(200).json({ pujaris });
+    res.status(200).json({
+      success: true,
+      data: {
+        pujaris,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          hasMore: pageNum * limitNum < total,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -226,22 +304,34 @@ exports.uploadDocument = async (req, res, next) => {
 // Submit verification (Mock)
 exports.submitVerification = async (req, res, next) => {
   try {
-    await PriestProfile.findOneAndUpdate({ userId: req.user.id }, { isVerified: false }); // Pending review
-    res.status(200).json({ message: 'Verification profile submitted for review.' });
+    await PriestProfile.findOneAndUpdate(
+      { userId: req.user.id },
+      {
+        verificationStatus: 'pending',  // ← was missing
+        onboardingCompleted: true,       // ← ensure this is set
+        isVerified: false,
+      }
+    );
+    res.status(200).json({
+      success: true,
+      message: 'Verification profile submitted for review.',
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// Get document (Serving buffer)
+// Get document 
 exports.getDocument = async (req, res, next) => {
   try {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
-    const doc = profile?.verificationDocuments.find((d) => d.type === req.params.documentType);
-    if (!doc) return res.status(404).json({ message: 'Document not found' });
-
-    res.set('Content-Type', doc.contentType);
-    res.send(doc.data);
+    const doc = profile?.verificationDocuments.find(
+      (d) => d.type === req.params.documentType
+    );
+    if (!doc || !doc.url) {
+      return res.status(404).json({ message: 'Document not found' });
+    }
+    res.status(200).json({ success: true, data: { url: doc.url } });
   } catch (error) {
     next(error);
   }
