@@ -400,17 +400,29 @@ exports.getPublicReviews = async (req, res, next) => {
   try {
     const { priestProfileId } = req.params;
     const { page = 1, limit = 5 } = req.query;
-    
-    const Rating = require('../models/rating'); // adjust path
-    
+    const Rating = require('../models/rating');
+
+    // Step 1: resolve PriestProfile → User._id
+    const profile = await PriestProfile
+      .findById(priestProfileId)
+      .select('userId')
+      .lean();
+
+    if (!profile) {
+      return res.status(404).json({ 
+        success: false, message: 'Profile not found' 
+      });
+    }
+
+    // Step 2: query Rating using User._id
     const [reviews, total] = await Promise.all([
-      Rating.find({ priestId: priestProfileId })
-        .populate('devoteeId', 'name profilePicture')
+      Rating.find({ priestId: profile.userId })
+        .populate('userId', 'name profilePicture') // devotee info
         .sort({ createdAt: -1 })
         .skip((parseInt(page) - 1) * parseInt(limit))
         .limit(parseInt(limit))
         .lean(),
-      Rating.countDocuments({ priestId: priestProfileId }),
+      Rating.countDocuments({ priestId: profile.userId }),
     ]);
 
     res.status(200).json({
