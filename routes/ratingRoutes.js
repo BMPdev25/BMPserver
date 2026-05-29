@@ -1,20 +1,68 @@
 // routes/ratingRoutes.js
 const express = require('express');
 const router = express.Router();
-const {
-  submitRating,
-  getPriestRatings,
-  getUserRatings,
-} = require('../controllers/ratingController');
 const { protect } = require('../middleware/authMiddleware');
+const Rating = require('../models/rating');
+const PriestProfile = require('../models/priestProfile');
 
-// Submit a new rating (protected route)
-router.post('/', protect, submitRating);
+router.use(protect);
 
-// Get ratings for a specific priest (public route)
-router.get('/priest/:priestId', getPriestRatings);
+// Submit a new rating
+router.post('/', async (req, res, next) => {
+  try {
+    const { bookingId, priestId, rating, categories, 
+            review, ceremonyType, ceremonyDate } = req.body;
+    
+    // Check not already rated
+    const existing = await Rating.findOne({ 
+      bookingId, userId: req.user.id 
+    });
+    if (existing) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'Already rated this booking' 
+      });
+    }
 
-// Get ratings submitted by a specific user (protected route)
-router.get('/user/:userId', protect, getUserRatings);
+    const newRating = await Rating.create({
+      bookingId, priestId,
+      userId: req.user.id,
+      rating, categories, review,
+      ceremonyType, ceremonyDate
+    });
+
+    // Update PriestProfile ratings aggregate
+    const allRatings = await Rating.find({ priestId });
+    const avg = allRatings.reduce((sum, r) => sum + r.rating, 0) 
+                / allRatings.length;
+    await PriestProfile.findOneAndUpdate(
+      { userId: priestId },
+      { 
+        'ratings.average': Math.round(avg * 10) / 10,
+        'ratings.count': allRatings.length 
+      }
+    );
+
+    res.status(201).json({ success: true, data: newRating });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Check if a booking has been rated
+router.get('/booking/:bookingId', async (req, res, next) => {
+  try {
+    const rating = await Rating.findOne({ 
+      bookingId: req.params.bookingId, 
+      userId: req.user.id 
+    });
+    res.status(200).json({ 
+      success: true, 
+      data: rating || null 
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;
