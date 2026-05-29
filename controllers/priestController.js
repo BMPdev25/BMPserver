@@ -349,3 +349,83 @@ exports.acceptInstantBooking = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getPublicProfile = async (req, res, next) => {
+  try {
+    const { priestProfileId } = req.params;
+    
+    const profile = await PriestProfile.findById(priestProfileId)
+      .populate('userId', 'name profilePicture')
+      .populate('services.ceremonyId', 'name description')
+      .lean();
+    
+    if (!profile || !profile.isVerified) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Pandit profile not found' 
+      });
+    }
+
+    // Strip sensitive fields
+    const publicProfile = {
+      _id: profile._id,
+      name: profile.userId?.name,
+      profilePicture: profile.profilePicture,
+      experience: profile.experience,
+      religiousTradition: profile.religiousTradition,
+      description: profile.description,
+      services: profile.services,
+      languages: profile.userId?.languagesSpoken || [],
+      ratings: profile.ratings,
+      specializations: profile.specializations,
+      serviceRadiusKm: profile.serviceRadiusKm,
+      ceremonyCount: profile.ceremonyCount,
+      currentAvailability: {
+        status: profile.currentAvailability?.status,
+      },
+      availability: {
+        weeklySchedule: profile.availability?.weeklySchedule,
+      },
+      verificationStatus: profile.verificationStatus,
+      isVerified: profile.isVerified,
+    };
+
+    res.status(200).json({ success: true, data: publicProfile });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getPublicReviews = async (req, res, next) => {
+  try {
+    const { priestProfileId } = req.params;
+    const { page = 1, limit = 5 } = req.query;
+    
+    const Rating = require('../models/rating'); // adjust path
+    
+    const [reviews, total] = await Promise.all([
+      Rating.find({ priestId: priestProfileId })
+        .populate('devoteeId', 'name profilePicture')
+        .sort({ createdAt: -1 })
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .limit(parseInt(limit))
+        .lean(),
+      Rating.countDocuments({ priestId: priestProfileId }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          hasMore: parseInt(page) * parseInt(limit) < total,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};

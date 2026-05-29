@@ -37,7 +37,9 @@ router.get('/transactions', priestController.getTransactions);
 router.get('/notifications', priestController.getNotifications);
 router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
 router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
-
+// Public routes — no authentication needed
+router.get('/public/:priestProfileId', priestController.getPublicProfile);
+router.get('/public/:priestProfileId/reviews', priestController.getPublicReviews);
 // Document upload route
 const multer = require('multer');
 const upload = multer({
