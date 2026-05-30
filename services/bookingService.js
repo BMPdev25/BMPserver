@@ -103,7 +103,7 @@ const getBookingDetails = async (bookingId, userId) => {
   }
 
   const booking = await Booking.findById(bookingId)
-    .populate('devoteeId', 'name phone email profilePicture rating')
+    .populate('devoteeId', 'name phone email profilePicture rating createdAt')
     .populate('priestId', 'name phone email profilePicture');
 
   if (!booking) {
