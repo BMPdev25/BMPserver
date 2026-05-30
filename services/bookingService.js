@@ -376,8 +376,8 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
     try {
-      const priestShare = booking.basePrice * (1 - PLATFORM_FEE_PERCENT);
-      const commissionAmount = booking.totalAmount - priestShare;
+      const priestShare = booking.basePrice;
+      const commissionAmount = booking.platformFee;
 
       const wallet = await getOrCreateWallet(booking.priestId);
       wallet.currentBalance += priestShare;
