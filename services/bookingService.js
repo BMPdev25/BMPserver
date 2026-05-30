@@ -278,7 +278,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   const VALID_TRANSITIONS = {
     pending: ['confirmed', 'cancelled'],
     requested: ['confirmed', 'cancelled'],
-    confirmed: ['arrived', 'cancelled'],
+    confirmed: ['arrived', 'completed', 'cancelled'],
     arrived: ['in_progress', 'cancelled'],
     in_progress: ['completed', 'cancelled'],
     completed: [],
