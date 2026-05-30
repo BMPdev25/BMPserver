@@ -369,6 +369,7 @@ exports.getPublicProfile = async (req, res, next) => {
     // Strip sensitive fields
     const publicProfile = {
       _id: profile._id,
+      userId: profile.userId?._id,
       name: profile.userId?.name,
       profilePicture: profile.profilePicture,
       experience: profile.experience,
