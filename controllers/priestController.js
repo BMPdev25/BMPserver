@@ -167,6 +167,7 @@ exports.updateBookingStatus = async (req, res, next) => {
       reason,
     });
     res.status(200).json({
+      success: true,
       message: `Booking ${status} successfully`,
       booking: booking,
     });
@@ -214,6 +215,11 @@ exports.getAvailablePujaris = async (req, res, next) => {
       isVerified: true,
     };
 
+    // Optional availability status filter (e.g. ?availability=available)
+    if (req.query.availability) {
+      filter['currentAvailability.status'] = req.query.availability;
+    }
+
     // Ceremony filter (optional now)
     if (ceremonyId) {
       filter['services.ceremonyId'] = ceremonyId;
@@ -257,6 +263,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
         .sort(sortQuery)
         .skip(skip)
         .limit(limitNum)
+        .select('userId services ratings currentAvailability location experience religiousTradition specializations verificationStatus profilePicture')
         .populate('userId', 'name profilePicture languagesSpoken')
         .lean(),
       PriestProfile.countDocuments(filter),
@@ -386,6 +393,7 @@ exports.getPublicProfile = async (req, res, next) => {
     const { priestProfileId } = req.params;
     
     const profile = await PriestProfile.findById(priestProfileId)
+      .select('userId services ratings experience description religiousTradition availability location currentAvailability isVerified verificationStatus specializations serviceRadiusKm ceremonyCount profilePicture')
       .populate('userId', 'name profilePicture languagesSpoken')
       .populate('services.ceremonyId', 'name description')
       .lean();

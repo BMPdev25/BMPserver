@@ -3,6 +3,8 @@ const express = require('express');
 const priestController = require('../controllers/priestController');
 const bookingController = require('../controllers/bookingController');
 const { protect, priestOnly } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { updatePriestProfileRules } = require('../validators/profileValidators');
 
 const router = express.Router();
 
@@ -16,7 +18,7 @@ router.use(protect);
 router.use(priestOnly);
 
 // Profile routes
-router.put('/profile', priestController.updateProfile);
+router.put('/profile', updatePriestProfileRules, validate, priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
 router.get('/profile-completion', priestController.getProfileCompletion);
 router.put('/status', priestController.toggleStatus);

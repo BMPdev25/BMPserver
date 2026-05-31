@@ -107,7 +107,7 @@ const login = async (identifier, password, userType) => {
   if (!user) {
     const wrongRoleUser = await User.findOne({
       $or: [{ phone: identifier }, { email: identifier }],
-    });
+    }).select('userType').lean();
 
     if (wrongRoleUser) {
       const error = new Error(

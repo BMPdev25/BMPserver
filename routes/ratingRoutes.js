@@ -2,13 +2,15 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { submitRatingRules } = require('../validators/ratingValidators');
 const Rating = require('../models/rating');
 const PriestProfile = require('../models/priestProfile');
 
 router.use(protect);
 
 // Submit a new rating
-router.post('/', async (req, res, next) => {
+router.post('/', submitRatingRules, validate, async (req, res, next) => {
   try {
     const { bookingId, priestId, rating, categories, 
             review, ceremonyType, ceremonyDate } = req.body;

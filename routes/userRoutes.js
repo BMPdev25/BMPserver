@@ -14,6 +14,8 @@ const {
   deleteAccount,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { updateUserProfileRules } = require('../validators/profileValidators');
 const rateLimit = require('express-rate-limit');
 
 // Rate limiting for sensitive operations
@@ -55,7 +57,7 @@ router.use(protect);
 
 // Profile management routes
 router.get('/profile', getProfile);
-router.put('/profile', profileUpdateLimit, updateProfile);
+router.put('/profile', profileUpdateLimit, updateUserProfileRules, validate, updateProfile);
 
 // Profile picture management
 router.post('/profile/picture', uploadLimit, upload.single('profilePicture'), uploadProfilePicture);

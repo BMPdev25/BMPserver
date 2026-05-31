@@ -92,8 +92,10 @@ const getBookings = async (userId, { status }) => {
   }
 
   let bookings = await Booking.find(query)
-    .populate('devoteeId', 'name email phone')
-    .sort({ date: 1 });
+    .select('ceremonyType date startTime endTime basePrice location devoteeId createdAt status')
+    .populate('devoteeId', 'name profilePicture createdAt')
+    .sort({ date: 1 })
+    .lean();
 
   if (status === 'upcoming') {
     bookings = bookings.filter(
@@ -119,7 +121,7 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: currentMonth },
-  });
+  }).select('amount').lean();
   const thisMonthEarnings = thisMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const lastMonthTxns = await Transaction.find({
@@ -127,7 +129,7 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: lastMonth, $lte: lastMonthEnd },
-  });
+  }).select('amount').lean();
   const lastMonthEarnings = lastMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const growthPercentage =
@@ -144,6 +146,7 @@ const getEarnings = async (userId) => {
   });
 
   const transactions = await Transaction.find({ priestId: userId })
+    .select('amount type direction status description bookingId createdAt')
     .sort({ createdAt: -1 })
     .limit(10)
     .populate({
@@ -153,7 +156,8 @@ const getEarnings = async (userId) => {
         path: 'devoteeId',
         select: 'name profilePicture',
       },
-    });
+    })
+    .lean();
 
   return {
     thisMonth: thisMonthEarnings,
@@ -182,7 +186,7 @@ const getNotifications = async (userId, { limit = 50, unreadOnly = false }) => {
   const query = { userId, targetRole: 'priest' };
   if (unreadOnly === 'true') query.read = false;
 
-  return await Notification.find(query).sort({ createdAt: -1 }).limit(parseInt(limit));
+  return await Notification.find(query).sort({ createdAt: -1 }).limit(parseInt(limit)).lean();
 };
 
 const markNotificationAsRead = async (userId, notificationId) => {

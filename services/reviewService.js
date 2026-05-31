@@ -84,7 +84,8 @@ const getUserReviews = async (userId, { page = 1, limit = 10 }) => {
     .populate('reviewerId', 'name profilePicture')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limit);
+    .limit(limit)
+    .lean();
   const total = await Review.countDocuments({ revieweeId: userId, isVisible: true });
   return { reviews, total };
 };

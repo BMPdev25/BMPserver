@@ -60,8 +60,9 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
   }
 
   let bookings = await Booking.find(query)
-    .populate('devoteeId', 'name phone profilePicture rating')
-    .populate('priestId', 'name phone profilePicture')
+    .select('ceremonyType date startTime endTime status paymentStatus totalAmount basePrice platformFee location devoteeId priestId paymentDetails.receiptNumber createdAt updatedAt')
+    .populate('devoteeId', 'name profilePicture createdAt')
+    .populate('priestId', 'name profilePicture')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -103,6 +104,7 @@ const getBookingDetails = async (bookingId, userId) => {
   }
 
   const booking = await Booking.findById(bookingId)
+    .select('-__v -statusHistory')
     .populate('devoteeId', 'name phone email profilePicture rating createdAt')
     .populate('priestId', 'name phone email profilePicture');
 

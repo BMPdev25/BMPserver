@@ -2,6 +2,8 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { sendOtpRules, verifyOtpRules } = require('../validators/authValidators');
 const router = express.Router();
 
 // Synchronize Firebase Session / Create new User
@@ -13,8 +15,8 @@ router.post('/register', authController.firebaseSync);
 router.post('/login', authController.firebaseSync);
 
 // Phone OTP Authentication
-router.post('/send-otp', authController.sendOtp);
-router.post('/verify-otp', authController.verifyOtp);
+router.post('/send-otp', sendOtpRules, validate, authController.sendOtp);
+router.post('/verify-otp', verifyOtpRules, validate, authController.verifyOtp);
 
 // Save Expo push token (Requires Valid Session)
 router.post('/push-token', protect, authController.savePushToken);

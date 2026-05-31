@@ -258,7 +258,8 @@ exports.getNotifications = async (req, res, next) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id, targetRole: 'devotee' })
       .sort({ createdAt: -1 })
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50)
+      .lean();
     res.status(200).json(notifications);
   } catch (error) {
     next(error);
