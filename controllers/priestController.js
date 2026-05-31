@@ -4,6 +4,7 @@ const bookingService = require('../services/bookingService');
 const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
+const { getPresignedUrl } = require('../services/storageService');
 
 // Create or update priest profile
 exports.updateProfile = async (req, res, next) => {
@@ -23,7 +24,7 @@ exports.toggleStatus = async (req, res, next) => {
       status,
       autoToggle,
     });
-    res.status(200).json({ success: true, currentAvailability });
+    res.status(200).json({ success: true, data: { currentAvailability } });
   } catch (error) {
     next(error);
   }
@@ -51,8 +52,17 @@ exports.getProfileCompletion = async (req, res, next) => {
 // Get priest's bookings
 exports.getBookings = async (req, res, next) => {
   try {
-    const bookings = await priestService.getBookings(req.user.id, req.query);
-    res.status(200).json(bookings);
+    const result = await bookingService.getBookings(req.user.id, 'priest', {
+      category: req.query.category,
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (error) {
     next(error);
   }
@@ -61,8 +71,28 @@ exports.getBookings = async (req, res, next) => {
 // Get priest's earnings
 exports.getEarnings = async (req, res, next) => {
   try {
-    const earnings = await priestService.getEarnings(req.user.id);
-    res.status(200).json(earnings);
+    const result = await priestService.getEarnings(req.user.id);
+    const priestProfile = await PriestProfile.findOne(
+      { userId: req.user.id },
+      'ratings ceremonyCount'
+    );
+    res.status(200).json({
+      success: true,
+      data: {
+        wallet: {
+          currentBalance: result.availableBalance ?? 0,
+        },
+        earnings: {
+          thisMonth: result.thisMonth ?? 0,
+          totalEarnings: result.totalCredited ?? 0,
+          pendingPayments: result.availableBalance ?? 0,
+        },
+        ceremonyCount: result.pujasCompleted ?? result.totalBookings ?? 0,
+        ratings: {
+          average: priestProfile?.ratings?.average ?? 0,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -321,17 +351,18 @@ exports.submitVerification = async (req, res, next) => {
   }
 };
 
-// Get document 
+// Get document — returns a short-lived presigned URL (never exposes the raw S3 key)
 exports.getDocument = async (req, res, next) => {
   try {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
     const doc = profile?.verificationDocuments.find(
       (d) => d.type === req.params.documentType
     );
-    if (!doc || !doc.url) {
-      return res.status(404).json({ message: 'Document not found' });
+    if (!doc?.url) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
     }
-    res.status(200).json({ success: true, data: { url: doc.url } });
+    const presignedUrl = await getPresignedUrl(doc.url, 3600);
+    res.status(200).json({ success: true, data: { url: presignedUrl } });
   } catch (error) {
     next(error);
   }
@@ -355,7 +386,7 @@ exports.getPublicProfile = async (req, res, next) => {
     const { priestProfileId } = req.params;
     
     const profile = await PriestProfile.findById(priestProfileId)
-      .populate('userId', 'name profilePicture')
+      .populate('userId', 'name profilePicture languagesSpoken')
       .populate('services.ceremonyId', 'name description')
       .lean();
     

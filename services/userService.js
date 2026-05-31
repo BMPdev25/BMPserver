@@ -1,7 +1,8 @@
 // services/userService.js
 const User = require('../models/user');
 const bcrypt = require('bcryptjs');
-const cloudinary = require('cloudinary').v2;
+const { deletePublicFile } = require('./storageService');
+const { priestProfilePicKey, devoteeProfilePicKey, keyFromPublicUrl } = require('../utils/s3Keys');
 
 const getProfile = async (userId) => {
   const user = await User.findById(userId)
@@ -32,29 +33,6 @@ const updateProfile = async (userId, updateData) => {
   }
 
   return user.toSafeObject();
-};
-
-const uploadProfilePicture = async (userId, file) => {
-  const user = await User.findById(userId);
-  if (!user) {
-    const error = new Error('User not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  // Delete old profile picture if exists
-  if (user.profilePicture.publicId) {
-    await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
-  }
-
-  user.profilePicture = {
-    url: file.path,
-    publicId: file.filename,
-    uploadedAt: new Date(),
-  };
-
-  await user.save();
-  return user.profilePicture;
 };
 
 const changePassword = async (userId, { currentPassword, newPassword }) => {
@@ -96,8 +74,10 @@ const deleteAccount = async (userId, password) => {
     throw error;
   }
 
-  if (user.profilePicture.publicId) {
-    await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
+  // Delete profile picture from S3 if it was already migrated (old Cloudinary URLs silently skipped)
+  if (user.profilePicture?.url) {
+    const oldKey = keyFromPublicUrl(user.profilePicture.url);
+    if (oldKey) await deletePublicFile(oldKey).catch(() => {});
   }
 
   await User.findByIdAndDelete(userId);
@@ -107,7 +87,6 @@ const deleteAccount = async (userId, password) => {
 module.exports = {
   getProfile,
   updateProfile,
-  uploadProfilePicture,
   changePassword,
   deleteAccount,
 };

@@ -122,10 +122,9 @@ const userSchema = new mongoose.Schema({
       default: {},
     },
   },
-  // Profile Picture (uploaded to Cloudinary)
+  // Profile Picture (stored in AWS S3 — key is derived from userId at runtime)
   profilePicture: {
     url: { type: String, default: null },
-    publicId: { type: String, default: null },
     uploadedAt: { type: Date, default: null },
   },
   // Family / Spiritual Details (for devotees)

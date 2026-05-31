@@ -2,29 +2,11 @@
 const userService = require('../services/userService');
 const User = require('../models/user');
 const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'sacred-connect/profile-pictures',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [
-      { width: 400, height: 400, crop: 'fill', quality: 'auto' },
-      { format: 'webp' },
-    ],
-  },
-});
+const { uploadPublicFile, deletePublicFile } = require('../services/storageService');
+const { priestProfilePicKey, devoteeProfilePicKey, keyFromPublicUrl } = require('../utils/s3Keys');
 
 exports.upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -59,12 +41,34 @@ exports.updateProfile = async (req, res, next) => {
 
 exports.uploadProfilePicture = async (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
-    const profilePicture = await userService.uploadProfilePicture(req.user.id, req.file);
-    res.json({
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Delete old picture from S3 if it was already migrated (old Cloudinary URLs silently skipped)
+    if (user.profilePicture?.url) {
+      const oldKey = keyFromPublicUrl(user.profilePicture.url);
+      if (oldKey) await deletePublicFile(oldKey).catch(() => {});
+    }
+
+    // Key is deterministic from userId — no need to store it separately
+    const keyFn = user.userType === 'priest' ? priestProfilePicKey : devoteeProfilePicKey;
+    const key = keyFn(user._id.toString());
+
+    const url = await uploadPublicFile(req.file.buffer, key, req.file.mimetype);
+
+    user.profilePicture = { url, uploadedAt: new Date() };
+    await user.save();
+
+    res.status(200).json({
       success: true,
-      message: 'Profile picture uploaded successfully',
-      data: { profilePicture },
+      data: { profilePicture: user.profilePicture },
+      message: 'Profile picture updated',
     });
   } catch (error) {
     next(error);
@@ -75,9 +79,14 @@ exports.deleteProfilePicture = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-    if (user.profilePicture.publicId)
-      await cloudinary.uploader.destroy(user.profilePicture.publicId).catch(() => {});
-    user.profilePicture = { url: null, publicId: null, uploadedAt: null };
+
+    // Delete from S3 if migrated (old Cloudinary URLs silently skipped)
+    if (user.profilePicture?.url) {
+      const oldKey = keyFromPublicUrl(user.profilePicture.url);
+      if (oldKey) await deletePublicFile(oldKey).catch(() => {});
+    }
+
+    user.profilePicture = { url: null, uploadedAt: null };
     await user.save();
     res.json({ success: true, message: 'Profile picture deleted successfully' });
   } catch (error) {

@@ -213,8 +213,7 @@ const priestProfileSchema = new mongoose.Schema({
         enum: ['government_id', 'religious_certificate', 'other'],
         required: true,
       },
-      data: String,
-      contentType: String,
+      url: { type: String, default: null }, // S3 key — presigned URL generated on demand
       fileName: String,
       uploadDate: { type: Date, default: Date.now },
       status: {

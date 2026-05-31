@@ -6,6 +6,8 @@ const Transaction = require('../models/transaction');
 const Notification = require('../models/notification');
 const Review = require('../models/review');
 const { getOrCreateWallet } = require('../services/commissionEngine');
+const { uploadPublicFile, uploadPrivateFile, deletePrivateFile } = require('./storageService');
+const { priestProfilePicKey, priestDocumentKey } = require('../utils/s3Keys');
 
 const updateProfile = async (userId, updateData) => {
   let profile = await PriestProfile.findOne({ userId });
@@ -144,7 +146,14 @@ const getEarnings = async (userId) => {
   const transactions = await Transaction.find({ priestId: userId })
     .sort({ createdAt: -1 })
     .limit(10)
-    .populate('bookingId', 'ceremonyType date devoteeId');
+    .populate({
+      path: 'bookingId',
+      select: 'ceremonyType date devoteeId',
+      populate: {
+        path: 'devoteeId',
+        select: 'name profilePicture',
+      },
+    });
 
   return {
     thisMonth: thisMonthEarnings,
@@ -203,27 +212,39 @@ const uploadDocument = async (userId, file, documentType) => {
       verificationDocuments: [],
       templesAffiliated: [],
     });
-    // Don't save yet, it will be saved at the end of this function
   }
 
   if (documentType === 'profile_picture') {
-    const b64 = file.buffer.toString('base64');
-    profile.profilePicture = `data:${file.mimetype};base64,${b64}`;
+    // Public bucket — URL served directly, no presigning needed
+    const key = priestProfilePicKey(userId.toString());
+    const url = await uploadPublicFile(file.buffer, key, file.mimetype);
+    profile.profilePicture = url;
+
   } else {
+    // Private bucket — store S3 key, presign at read time
+    const key = priestDocumentKey(userId.toString(), documentType, file.mimetype);
+
+    // Delete previous version from S3 if one exists
+    const existing = profile.verificationDocuments.find((d) => d.type === documentType);
+    if (existing?.url) await deletePrivateFile(existing.url).catch(() => {});
+
+    const s3Key = await uploadPrivateFile(file.buffer, key, file.mimetype);
+
     const newDoc = {
       type: documentType,
-      data: file.buffer,
-      contentType: file.mimetype,
+      url: s3Key,
       fileName: file.originalname,
       status: 'pending',
+      uploadDate: new Date(),
     };
+
     const idx = profile.verificationDocuments.findIndex((d) => d.type === documentType);
     if (idx !== -1) profile.verificationDocuments[idx] = newDoc;
     else profile.verificationDocuments.push(newDoc);
   }
 
   await profile.save();
-  return { message: 'Document uploaded successfully' };
+  return { success: true, message: 'Document uploaded successfully' };
 };
 
 const getProfileCompletion = async (userId) => {
