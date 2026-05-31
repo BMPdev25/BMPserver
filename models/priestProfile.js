@@ -244,5 +244,6 @@ priestProfileSchema.index({ location: '2dsphere' });
 priestProfileSchema.index({ verificationStatus: 1, isVerified: 1 });
 priestProfileSchema.index({ "currentAvailability.status": 1 });
 priestProfileSchema.index({ "ratings.average": -1 });
+priestProfileSchema.index({ isVerified: 1 });
 
 module.exports = mongoose.model('PriestProfile', priestProfileSchema);

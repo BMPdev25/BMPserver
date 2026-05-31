@@ -74,5 +74,7 @@ const ratingSchema = new mongoose.Schema(
 
 // Prevent duplicate ratings for the same booking
 ratingSchema.index({ bookingId: 1, userId: 1 }, { unique: true });
+ratingSchema.index({ priestId: 1, createdAt: -1 });
+ratingSchema.index({ bookingId: 1 });
 
 module.exports = mongoose.model('Rating', ratingSchema);

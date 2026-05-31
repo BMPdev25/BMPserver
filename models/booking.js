@@ -214,6 +214,10 @@ bookingSchema.index({ status: 1 });
 bookingSchema.index({ date: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ devoteeId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, date: 1 });
+bookingSchema.index({ status: 1, createdAt: -1 });
 
 // Update the updatedAt field before saving
 bookingSchema.pre('save', function (next) {

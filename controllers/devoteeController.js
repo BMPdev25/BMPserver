@@ -23,7 +23,10 @@ exports.getAllPriests = async (req, res, next) => {
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
         profilePicture: priest.profilePicture,
-        rating: priest.ratings,
+        ratings: {
+          average: priest.ratings?.average ?? 0,
+          count: priest.ratings?.count ?? 0,
+        },
         languages: priest.userId?.languagesSpoken?.map((l) => l.name) || [],
       })),
     });
