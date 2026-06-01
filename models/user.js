@@ -86,11 +86,13 @@ const userSchema = new mongoose.Schema({
         enum: ['Home', 'Work', 'Other'],
         default: 'Home',
       },
+      houseNo: String,
       street: String,
       area: String,
       city: String,
       state: String,
       zip: String,
+      pincode: String,
       landmark: String,
       isDefault: {
         type: Boolean,
