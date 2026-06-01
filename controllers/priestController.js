@@ -157,6 +157,20 @@ exports.markAllNotificationsAsRead = async (req, res, next) => {
   }
 };
 
+// Complete a booking (convenience wrapper for status → 'completed')
+exports.completeBooking = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const booking = await bookingService.updateBookingStatus(id, req.user.id, {
+      status: 'completed',
+      reason: req.body.reason,
+    });
+    res.status(200).json({ success: true, message: 'Booking completed successfully', booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Update booking status
 exports.updateBookingStatus = async (req, res, next) => {
   try {

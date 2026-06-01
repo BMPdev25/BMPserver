@@ -48,6 +48,14 @@ exports.createBooking = async (req, res, next) => {
     const devoteeId = req.user.id;
     const booking = await bookingService.createBooking(devoteeId, req.body);
 
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+    const priestSocketId = userSockets.get(booking.priestId._id?.toString() ?? booking.priestId.toString());
+    if (io && priestSocketId) {
+      await booking.populate('devoteeId', 'name profilePicture createdAt');
+      io.to(priestSocketId).emit('new_booking_request', booking.toObject());
+    }
+
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',

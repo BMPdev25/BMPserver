@@ -48,17 +48,16 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('register', (userId) => {
-    if (userId) {
-      userSockets.set(userId.toString(), socket.id);
-      socket.userId = userId.toString();
-      console.log(`User ${userId} registered with socket ${socket.id}`);
-    }
+    if (!userId) return;
+    userSockets.set(userId.toString(), socket.id);
+    socket.userId = userId.toString();
+    console.log(`[Socket] ${userId} registered with socket ${socket.id}`);
   });
 
   socket.on('disconnect', () => {
     if (socket.userId) {
       userSockets.delete(socket.userId);
-      console.log(`User ${socket.userId} disconnected`);
+      console.log(`[Socket] ${socket.userId} disconnected`);
     }
   });
 });
