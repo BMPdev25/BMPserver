@@ -1,83 +1,67 @@
-const request = require('supertest');
-const { app } = require('../../server'); // Ensure server.js exports app
-const mongoose = require('mongoose');
-const Language = require('../../models/language');
+process.env.NODE_ENV = 'test'
 
-describe('Auth API Integration', () => {
-  let languageId;
+jest.mock('expo-server-sdk', () => ({
+  Expo: class {
+    static isExpoPushToken() { return false }
+    chunkPushNotifications() { return [] }
+    async sendPushNotificationsAsync() { return [] }
+  },
+}))
 
-  beforeAll(async () => {
-    // Get a language ID for priest tests
-    const language = await Language.findOne({ code: 'HI' });
-    if (language) {
-      languageId = language._id.toString();
-    }
-  });
+jest.mock('../../config/firebase', () => ({
+  auth: () => ({
+    verifyIdToken: jest.fn().mockImplementation(async (token) => {
+      if (token === 'valid-firebase-token') {
+        return { uid: 'test-uid-integ', email: 'integ@test.com' }
+      }
+      const err = new Error('Firebase: token invalid')
+      err.code = 'auth/argument-error'
+      throw err
+    }),
+    createCustomToken: jest.fn().mockResolvedValue('mock-custom-token'),
+  }),
+}))
 
-  it('should register a new devotee user', async () => {
-    const res = await request(app).post('/api/auth/register').send({
-      name: 'Integration Test User',
-      email: 'integration@test.com',
-      password: 'password123',
-      phone: '9876543210',
-      userType: 'devotee',
-    });
+const request = require('supertest')
+const { app } = require('../../server')
+const { createTestDevotee } = require('../helpers/testFactory')
 
-    expect(res.statusCode).toEqual(201);
-    expect(res.body).toHaveProperty('token');
-    expect(res.body).toHaveProperty('_id');
-    expect(res.body.email).toEqual('integration@test.com');
-  });
-
-  it('should register a new priest user with languages', async () => {
+describe('Auth Integration', () => {
+  it('creates a new user on first Firebase sync', async () => {
     const res = await request(app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Priest Test User',
-        email: 'priest@test.com',
-        password: 'password123',
-        phone: '9876543211',
-        userType: 'priest',
-        languagesSpoken: languageId ? [languageId] : [],
-      });
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer valid-firebase-token')
+      .send({ userType: 'devotee' })
 
-    expect(res.statusCode).toEqual(201);
-    expect(res.body).toHaveProperty('token');
-    expect(res.body).toHaveProperty('_id');
-    expect(res.body.userType).toEqual('priest');
-  });
+    expect(res.status).toBe(200)
+    expect(res.body._id).toBeDefined()
+    expect(res.body.userType).toBe('devotee')
+  })
 
-  it('should fail to register priest without languages', async () => {
-    const res = await request(app).post('/api/auth/register').send({
-      name: 'Priest No Lang',
-      email: 'priestnolang@test.com',
-      password: 'password123',
-      phone: '9876543212',
-      userType: 'priest',
-      languagesSpoken: [],
-    });
+  it('returns 401 when Firebase token is invalid', async () => {
+    const res = await request(app)
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer bad-token')
+      .send({ userType: 'devotee' })
 
-    expect(res.statusCode).toEqual(400);
-    expect(res.body.message).toContain('language');
-  });
+    expect(res.status).toBe(401)
+  })
 
-  it('should login an existing user', async () => {
-    // First register
-    await request(app).post('/api/auth/register').send({
-      name: 'Login User',
-      email: 'login@test.com',
-      password: 'password123',
-      phone: '1122334455',
-      userType: 'devotee',
-    });
+  it('returns 401 when no auth header provided', async () => {
+    const res = await request(app).post('/api/auth/sync').send({ userType: 'devotee' })
+    expect(res.status).toBe(401)
+  })
 
-    // Then login
-    const res = await request(app).post('/api/auth/login').send({
-      identifier: 'login@test.com',
-      password: 'password123',
-    });
+  it('returns user profile for authenticated user', async () => {
+    const user = await createTestDevotee()
 
-    expect(res.statusCode).toEqual(200);
-    expect(res.body).toHaveProperty('token');
-  });
-});
+    const res = await request(app)
+      .get('/api/users/profile')
+      .set('x-test-user-id', user._id.toString())
+      .set('x-test-user-type', 'devotee')
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.data._id).toBe(user._id.toString())
+  })
+})

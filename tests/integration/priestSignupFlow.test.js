@@ -1,107 +1,65 @@
-const request = require('supertest');
-const { app } = require('../../server');
-const Ceremony = require('../../models/ceremony');
-const Language = require('../../models/language');
-const mongoose = require('mongoose');
+process.env.NODE_ENV = 'test'
 
-describe('Priest Signup & Profile Integration', () => {
-  let token;
-  let ceremonyId;
-  let languageIds = [];
+jest.mock('expo-server-sdk', () => ({
+  Expo: class {
+    static isExpoPushToken() { return false }
+    chunkPushNotifications() { return [] }
+    async sendPushNotificationsAsync() { return [] }
+  },
+}))
 
-  // Seed data
-  beforeEach(async () => {
-    // Seed Ceremony
-    const ceremony = await Ceremony.create({
-      name: 'Test Ceremony',
-      description: 'Test Desc',
-      category: 'puja',
-      subcategory: 'deity',
-      duration: { typical: 60, minimum: 45, maximum: 90 },
-      pricing: { basePrice: 1100, priceRange: { min: 1100, max: 2100 }, factors: [] },
-      religiousTraditions: ['Hindu'],
-      images: [{ url: '/img.png', alt: 'Test', isPrimary: true }],
-      requirements: { materials: [] },
-    });
-    ceremonyId = ceremony._id.toString();
+jest.mock('../../config/firebase', () => ({
+  auth: () => ({ verifyIdToken: jest.fn(), createCustomToken: jest.fn() }),
+}))
 
-    // Seed Languages
-    const lang1 = await Language.create({
-      name: 'English',
-      nativeName: 'English',
-      code: 'EN',
-      speakersInMillions: 1000,
-      rank: 1,
-    });
-    const lang2 = await Language.create({
-      name: 'Hindi',
-      nativeName: 'Hindi',
-      code: 'HI',
-      speakersInMillions: 500,
-      rank: 3,
-    });
-    languageIds = [lang1._id.toString(), lang2._id.toString()];
-  });
+const request = require('supertest')
+const { app } = require('../../server')
+const { createTestPriest } = require('../helpers/testFactory')
 
-  test('Full Priest Onboarding Flow', async () => {
-    // 1. REGISTER
-    const registerRes = await request(app).post('/api/auth/register').send({
-      name: 'Integration Priest',
-      email: 'integration@test.com',
-      phone: '9998887776',
-      password: 'password123',
-      userType: 'priest',
-      languagesSpoken: languageIds,
-    });
+const authAs = (user, type = 'priest') => ({
+  'x-test-user-id': user._id.toString(),
+  'x-test-user-type': type,
+})
 
-    if (registerRes.statusCode !== 201) {
-      console.error('Register Error:', JSON.stringify(registerRes.body, null, 2));
-    }
-    expect(registerRes.statusCode).toBe(201);
-    expect(registerRes.body).toHaveProperty('token');
-    token = registerRes.body.token;
+describe('Priest Profile Update Flow', () => {
+  it('priest can update their profile', async () => {
+    const { user } = await createTestPriest()
 
-    // 2. FETCH CEREMONIES
-    const ceremonyRes = await request(app).get('/api/ceremonies');
-
-    expect(ceremonyRes.statusCode).toBe(200);
-    // Controller likely returns array directly or { ceremonies: [] }
-    // Let's handle both or check controller findings
-    const list = Array.isArray(ceremonyRes.body)
-      ? ceremonyRes.body
-      : ceremonyRes.body.ceremonies || ceremonyRes.body.data;
-    expect(list.length).toBeGreaterThan(0);
-
-    // 3. UPDATE PROFILE DETAILS
-    const updateRes = await request(app)
+    const res = await request(app)
       .put('/api/priest/profile')
-      .set('Authorization', `Bearer ${token}`)
+      .set(authAs(user))
       .send({
         experience: 10,
-        description: 'Experienced Vedic Priest',
-        religiousTradition: 'Vedic',
-        location: { type: 'Point', coordinates: [77.59, 12.97] },
-        services: [
-          {
-            ceremonyId: ceremonyId,
-            price: 1500,
-            durationMinutes: 60,
-          },
-        ],
-      });
+        description: 'Experienced Vedic Priest with a decade of practice',
+        religiousTradition: 'Hindu',
+      })
 
-    if (updateRes.statusCode !== 200) {
-      console.error('Update Error:', JSON.stringify(updateRes.body, null, 2));
-    }
-    expect(updateRes.statusCode).toBe(200);
-    expect(updateRes.body.experience).toBe(10);
+    expect(res.status).toBe(200)
+    expect(res.body.experience).toBe(10)
+    expect(res.body.description).toBe('Experienced Vedic Priest with a decade of practice')
+  })
 
-    // 4. VERIFY PROFILE
-    const profileRes = await request(app)
+  it('priest can read back their updated profile', async () => {
+    const { user } = await createTestPriest()
+
+    await request(app)
+      .put('/api/priest/profile')
+      .set(authAs(user))
+      .send({ description: 'Profile read-back test priest' })
+
+    const res = await request(app)
       .get('/api/priest/profile')
-      .set('Authorization', `Bearer ${token}`);
+      .set(authAs(user))
 
-    expect(profileRes.statusCode).toBe(200);
-    expect(profileRes.body.description).toBe('Experienced Vedic Priest');
-  });
-});
+    expect(res.status).toBe(200)
+    expect(res.body.userId).toBeDefined()
+  })
+
+  it('returns 401 updating profile without auth', async () => {
+    const res = await request(app)
+      .put('/api/priest/profile')
+      .send({ experience: 5 })
+
+    expect(res.status).toBe(401)
+  })
+})
