@@ -129,7 +129,10 @@ const login = async (identifier, password, userType) => {
   }
 
   const token = generateToken(user._id, user.userType);
-  return { user, token };
+  const userObj = user.toObject();
+  delete userObj.password;
+  delete userObj.__v;
+  return { user: userObj, token };
 };
 
 const firebaseLogin = async (idToken, userType = 'devotee') => {

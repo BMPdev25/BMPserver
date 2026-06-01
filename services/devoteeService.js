@@ -52,12 +52,13 @@ const searchPriests = async (query) => {
   }
 
   const priests = await PriestProfile.find(filter)
+    .select('userId services ratings currentAvailability location experience religiousTradition profilePicture isVerified verificationStatus')
     .populate({
       path: 'userId',
-      select: 'name email phone location languagesSpoken',
+      select: 'name profilePicture languagesSpoken',
       populate: { path: 'languagesSpoken', select: 'name' },
     })
-    .populate('services.ceremonyId', 'name')
+    .populate('services.ceremonyId', 'name category duration')
     .sort({ 'ratings.average': -1 })
     .limit(limit * 1)
     .skip((page - 1) * limit)
@@ -76,23 +77,25 @@ const getPriestDetails = async (priestId) => {
   }
 
   let priest = await PriestProfile.findById(priestId)
+    .select('userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics')
     .populate({
       path: 'userId',
-      select: 'name email phone location languagesSpoken',
+      select: 'name profilePicture languagesSpoken',
       populate: { path: 'languagesSpoken', select: 'name' },
     })
-    .populate('services.ceremonyId', 'name ritualSteps')
+    .populate('services.ceremonyId', 'name category duration ritualSteps')
     .lean()
     .exec();
 
   if (!priest) {
     priest = await PriestProfile.findOne({ userId: priestId })
+      .select('userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics')
       .populate({
         path: 'userId',
-        select: 'name email phone location languagesSpoken',
+        select: 'name profilePicture languagesSpoken',
         populate: { path: 'languagesSpoken', select: 'name' },
       })
-      .populate('services.ceremonyId', 'name ritualSteps')
+      .populate('services.ceremonyId', 'name category duration ritualSteps')
       .lean()
       .exec();
   }

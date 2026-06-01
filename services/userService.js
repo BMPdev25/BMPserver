@@ -6,7 +6,7 @@ const { priestProfilePicKey, devoteeProfilePicKey, keyFromPublicUrl } = require(
 
 const getProfile = async (userId) => {
   const user = await User.findById(userId)
-    .select('-password -security.refreshTokens')
+    .select('-password -__v -security.refreshTokens')
     .populate('languagesSpoken');
 
   if (!user) {
@@ -23,7 +23,7 @@ const updateProfile = async (userId, updateData) => {
     new: true,
     runValidators: true,
   })
-    .select('-password -security.refreshTokens')
+    .select('-password -__v -security.refreshTokens')
     .populate('languagesSpoken');
 
   if (!user) {

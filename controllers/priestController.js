@@ -279,6 +279,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
         .limit(limitNum)
         .select('userId services ratings currentAvailability location experience religiousTradition specializations verificationStatus profilePicture')
         .populate('userId', 'name profilePicture languagesSpoken')
+        .populate('services.ceremonyId', 'name category duration')
         .lean(),
       PriestProfile.countDocuments(filter),
     ]);

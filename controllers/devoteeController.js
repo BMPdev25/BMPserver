@@ -138,10 +138,10 @@ exports.searchPriests = async (req, res, next) => {
     const priests = await PriestProfile.find(finalFilter)
       .populate({
         path: "userId",
-        select: "name email phone location languagesSpoken",
+        select: "name profilePicture languagesSpoken",
         populate: { path: "languagesSpoken", select: "name" }
       })
-      .populate("services.ceremonyId", "name")
+      .populate("services.ceremonyId", "name category duration")
       .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate")
       .sort({ "ratings.average": -1 })
       .limit(limit * 1)
@@ -155,14 +155,11 @@ exports.searchPriests = async (req, res, next) => {
     const formattedPriests = verifiedPriests.map((priest) => ({
       _id: priest._id,
       name: priest.userId?.name || 'Unknown Name',
-      email: priest.userId?.email || '',
-      phone: priest.userId?.phone || '',
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      profilePicture: priest.profilePicture,
+      profilePicture: priest.profilePicture || priest.userId?.profilePicture,
       rating: priest.ratings,
       ceremonyCount: priest.ceremonyCount || 0,
-      location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
       languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
