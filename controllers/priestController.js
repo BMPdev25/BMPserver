@@ -211,16 +211,17 @@ exports.getAvailablePujaris = async (req, res, next) => {
     } = req.query;
 
     // Build geo filter (optional)
+    const hasLocation = lat && lng;
     let geoFilter = {};
-    if (lat && lng) {
+    if (hasLocation) {
+      const radiusMetres = parseFloat(radius) * 1000;
       geoFilter = {
         location: {
-          $near: {
-            $geometry: {
-              type: 'Point',
-              coordinates: [parseFloat(lng), parseFloat(lat)],
-            },
-            $maxDistance: parseFloat(radius) * 1000,
+          $geoWithin: {
+            $centerSphere: [
+              [parseFloat(lng), parseFloat(lat)],
+              radiusMetres / 6378100, // metres → radians
+            ],
           },
         },
       };
@@ -261,10 +262,10 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['services.price'] = priceFilter;
     }
 
-    // Sort mapping
+    // Sort mapping ($geoWithin does not auto-sort by distance, so fall back to rating)
     const sortMap = {
       rating:     { 'ratings.average': -1 },
-      distance:   {}, // geo sort handled by $near automatically
+      distance:   { 'ratings.average': -1 },
       price_asc:  { 'services.price': 1 },
       price_desc: { 'services.price': -1 },
     };
