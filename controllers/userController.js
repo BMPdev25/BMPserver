@@ -184,6 +184,27 @@ exports.updateNotificationPreferences = async (req, res) => {
   }
 };
 
+exports.savePushToken = async (req, res, next) => {
+  try {
+    const { token } = req.body
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Push token is required',
+      })
+    }
+    await User.findByIdAndUpdate(req.user.id, {
+      expoPushToken: token,
+    })
+    res.status(200).json({
+      success: true,
+      message: 'Push token saved',
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 // Delete account
 exports.deleteAccount = async (req, res, next) => {
   try {

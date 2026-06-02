@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const moment = require('moment');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
+const pushService = require('../services/pushService');
 
 // Run every hour to check for upcoming bookings
 const scheduleReminders = () => {
@@ -100,4 +101,35 @@ const sendReminder = async (userId, relatedId, title, message, targetRole) => {
   }
 };
 
-module.exports = { scheduleReminders };
+// Every day at 8:00 AM IST (2:30 AM UTC)
+const schedulePushReminders = () => {
+  cron.schedule('30 2 * * *', async () => {
+    console.log('[Cron] Running ceremony reminder job...')
+    try {
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      const dateStr = tomorrow.toISOString().split('T')[0]
+
+      const bookings = await Booking.find({
+        date: {
+          $gte: new Date(dateStr + 'T00:00:00.000Z'),
+          $lt: new Date(dateStr + 'T23:59:59.999Z'),
+        },
+        status: 'confirmed',
+      }).populate('devoteeId priestId', 'name')
+
+      for (const booking of bookings) {
+        await pushService.notifyBothCeremonyReminder(
+          booking.devoteeId._id,
+          booking.priestId._id,
+          booking
+        )
+      }
+      console.log(`[Cron] Sent reminders for ${bookings.length} ceremonies.`)
+    } catch (err) {
+      console.error('[Cron] Reminder job failed:', err.message)
+    }
+  })
+}
+
+module.exports = { scheduleReminders, schedulePushReminders };

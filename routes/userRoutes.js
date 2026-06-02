@@ -12,6 +12,7 @@ const {
   updatePrivacySettings,
   updateNotificationPreferences,
   deleteAccount,
+  savePushToken,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
@@ -72,6 +73,9 @@ router.put('/privacy/settings', updatePrivacySettings);
 
 // Notification preferences
 router.put('/notifications', updateNotificationPreferences);
+
+// Expo push token
+router.put('/push-token', savePushToken);
 
 // Account deletion (high-risk operation)
 router.delete(

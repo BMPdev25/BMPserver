@@ -13,6 +13,7 @@ const { recalculateReliability, updateDevoteeReliability } = require('../utils/r
 const { isPriestAvailable } = require('../utils/availability');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
+const pushService = require('./pushService');
 
 const PLATFORM_FEE_PERCENT = 0.05;
 
@@ -273,6 +274,12 @@ const createBooking = async (devoteeId, bookingData) => {
     { path: 'priestId', select: 'name phone email' },
   ]);
 
+  // Notify priest of new request
+  await pushService.notifyPriestNewRequest(
+    booking.priestId._id || booking.priestId,
+    booking
+  )
+
   return booking;
 };
 
@@ -337,6 +344,37 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   });
 
   await booking.save();
+
+  if (status === 'confirmed') {
+    await pushService.notifyDevoteeBookingConfirmed(
+      booking.devoteeId._id || booking.devoteeId,
+      booking
+    )
+  }
+
+  if (status === 'cancelled') {
+    const callerIsPriest =
+      booking.priestId.toString() === userId ||
+      booking.priestId._id?.toString() === userId
+    if (callerIsPriest) {
+      await pushService.notifyDevoteeCancelledByPriest(
+        booking.devoteeId._id || booking.devoteeId,
+        booking
+      )
+    } else {
+      await pushService.notifyPriestBookingCancelled(
+        booking.priestId._id || booking.priestId,
+        booking
+      )
+    }
+  }
+
+  if (status === 'rejected') {
+    await pushService.notifyDevoteeBookingDeclined(
+      booking.devoteeId._id || booking.devoteeId,
+      booking
+    )
+  }
 
   // Auto-cancel concurrent pending requests if confirmed
   if (status === 'confirmed') {
@@ -406,6 +444,12 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
         priestShare: priestShare,
       });
 
+      await pushService.notifyPriestPaymentCredited(
+        booking.priestId._id || booking.priestId,
+        booking,
+        priestShare
+      );
+
       await PriestProfile.findOneAndUpdate(
         { userId: booking.priestId },
         {
@@ -468,6 +512,10 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
   });
 
   await booking.save();
+  await pushService.notifyPriestBookingCancelled(
+    booking.priestId._id || booking.priestId,
+    booking
+  );
   await updateDevoteeReliability(userId, 'cancellation').catch(() => {});
 
   return booking;
