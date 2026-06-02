@@ -15,7 +15,7 @@ const scheduleReminders = () => {
       const bookings = await Booking.find({ status: 'confirmed' });
 
       for (const booking of bookings) {
-        if (!booking.date || !booking.time) continue;
+        if (!booking.date || !booking.startTime) continue;
 
         // Create a moment object for the booking start time
         // Assuming time is in "HH:MM AM/PM" or "HH:MM" format

@@ -85,8 +85,8 @@ const universalSearch = async (req, res) => {
       if (priceRange) {
         const [minPrice, maxPrice] = priceRange.split('-').map(Number);
         filteredPriests = filteredPriests.filter((priest) => {
-          const prices = Array.from(priest.priestProfile.priceList.values());
-          const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+          const prices = Object.values(priest.priestProfile.priceList || {});
+          const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
           return avgPrice >= minPrice && avgPrice <= maxPrice;
         });
       }
@@ -100,8 +100,8 @@ const universalSearch = async (req, res) => {
           break;
         case 'price':
           filteredPriests.sort((a, b) => {
-            const aPrice = Math.min(...Array.from(a.priestProfile.priceList.values()));
-            const bPrice = Math.min(...Array.from(b.priestProfile.priceList.values()));
+            const aPrice = Math.min(...Object.values(a.priestProfile.priceList || {}));
+            const bPrice = Math.min(...Object.values(b.priestProfile.priceList || {}));
             return aPrice - bPrice;
           });
           break;
@@ -113,24 +113,26 @@ const universalSearch = async (req, res) => {
           break;
       }
 
-      searchResults.priests = filteredPriests.map((priest) => ({
-        id: priest._id,
-        name: priest.name,
-        profilePicture: priest.profilePicture,
-        experience: priest.priestProfile.experience,
-        religiousTradition: priest.priestProfile.religiousTradition,
-        rating: priest.priestProfile.ratings,
-        rating: priest.priestProfile.ratings,
-        // ceremonies: priest.priestProfile.ceremonies, // removed
-        description: priest.priestProfile.description,
-        priceRange: {
-          min: Math.min(...Array.from(priest.priestProfile.priceList.values())),
-          max: Math.max(...Array.from(priest.priestProfile.priceList.values())),
-        },
-        availability: priest.priestProfile.currentAvailability,
-        serviceAreas: priest.priestProfile.serviceAreas,
-        type: 'priest',
-      }));
+      searchResults.priests = filteredPriests.map((priest) => {
+        const prices = Object.values(priest.priestProfile.priceList || {});
+        return {
+          id: priest._id,
+          name: priest.name,
+          profilePicture: priest.profilePicture,
+          experience: priest.priestProfile.experience,
+          religiousTradition: priest.priestProfile.religiousTradition,
+          rating: priest.priestProfile.ratings,
+          // ceremonies: priest.priestProfile.ceremonies, // removed
+          description: priest.priestProfile.description,
+          priceRange: {
+            min: prices.length ? Math.min(...prices) : 0,
+            max: prices.length ? Math.max(...prices) : 0,
+          },
+          availability: priest.priestProfile.currentAvailability,
+          serviceAreas: priest.priestProfile.serviceAreas,
+          type: 'priest',
+        };
+      });
     }
 
     // Search ceremonies if type is 'ceremonies' or 'all'

@@ -149,7 +149,11 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+}, {
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
 });
+
 
 // Indexes for performance
 userSchema.index({ email: 1 });
@@ -261,5 +265,12 @@ userSchema.methods.toSafeObject = function () {
 // Performance indexes
 userSchema.index({ userType: 1 });
 userSchema.index({ userType: 1, isActive: 1 });
+
+userSchema.virtual('priestProfile', {
+  ref: 'PriestProfile',
+  localField: '_id',
+  foreignField: 'userId',
+  justOne: true,
+});
 
 module.exports = mongoose.model('User', userSchema);

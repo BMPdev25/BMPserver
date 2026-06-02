@@ -157,7 +157,7 @@ exports.searchPriests = async (req, res, next) => {
       name: priest.userId?.name || 'Unknown Name',
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      profilePicture: priest.profilePicture || priest.userId?.profilePicture,
+      profilePicture: priest.profilePicture || priest.userId?.profilePicture?.url,
       rating: priest.ratings,
       ceremonyCount: priest.ceremonyCount || 0,
       priceList: priest.priceList,

@@ -45,15 +45,16 @@ const updateVerificationStatus = async (priestId, { status, rejectionReason }) =
   await User.findByIdAndUpdate(priestId, { isVerified: profile.isVerified });
   await profile.save();
 
-  await Notification.create({
+  await Notification.createNotification({
     userId: priestId,
     title: status === 'approved' ? 'Profile Verified! 🎉' : 'Verification Update Required',
     message:
       status === 'approved'
         ? 'Congratulations! Your account is now verified.'
         : `Your verification request was rejected. Reason: ${rejectionReason}.`,
-    type: 'profile_update',
-    targetId: priestId,
+    type: 'general',
+    targetRole: 'priest',
+    relatedId: priestId,
   });
 
   return profile;

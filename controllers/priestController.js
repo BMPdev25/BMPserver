@@ -10,6 +10,9 @@ const { getPresignedUrl } = require('../services/storageService');
 exports.updateProfile = async (req, res, next) => {
   try {
     const profile = await priestService.updateProfile(req.user.id, req.body);
+    if (req.body.name && req.body.name.trim() !== '') {
+      await User.findByIdAndUpdate(req.user.id, { name: req.body.name.trim() });
+    }
     res.status(200).json(profile);
   } catch (error) {
     next(error);
@@ -288,7 +291,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
       _id: p._id,
       userId: p.userId?._id,
       name: p.userId?.name || 'Unknown Priest',
-      profilePicture: p.profilePicture || p.userId?.profilePicture,
+      profilePicture: p.profilePicture || p.userId?.profilePicture?.url,
       primarySpecialization: p.specializations?.[0]?.name || '',
       rating: p.ratings?.average || 0,
       reviewCount: p.ratings?.count || 0,
