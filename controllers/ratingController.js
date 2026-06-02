@@ -1,5 +1,6 @@
 // controllers/ratingController.js
 const Rating = require('../models/rating');
+const mongoose = require('mongoose');
 
 // Submit a new rating
 exports.submitRating = async (req, res) => {
@@ -111,6 +112,7 @@ exports.getPriestRatings = async (req, res) => {
   try {
     const { priestId } = req.params;
     const { page = 1, limit = 10 } = req.query;
+    const priestObjectId = new mongoose.Types.ObjectId(priestId);
 
     const ratings = await Rating.find({ priestId })
       .sort({ createdAt: -1 })
@@ -121,7 +123,7 @@ exports.getPriestRatings = async (req, res) => {
 
     // Calculate average rating
     const avgRatingResult = await Rating.aggregate([
-      { $match: { priestId } },
+      { $match: { priestId: priestObjectId } },
       {
         $group: {
           _id: null,

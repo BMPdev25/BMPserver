@@ -89,12 +89,12 @@ exports.firebaseSync = async (req, res) => {
     }
 
     // Determine if profile is populated
-    let profileCompleted = true;
-    if (user.userType === 'priest') {
+    let profileCompleted = !!user.name && user.name !== 'New User';
+    if (user.userType === 'priest' && profileCompleted) {
         const PriestProfile = require('../models/priestProfile');
         const profile = await PriestProfile.findOne({ userId: user._id });
         if (!profile || !profile.isVerified) {
-            profileCompleted = false; // Adjust based on your actual completion criteria
+            profileCompleted = false;
         }
     }
 
@@ -123,7 +123,7 @@ exports.savePushToken = async (req, res, next) => {
       return res.status(400).json({ message: 'Push token is required' });
     }
 
-    await authService.savePushToken(userId, pushToken);
+    await User.findByIdAndUpdate(userId, { expoPushToken: pushToken });
 
     res.status(200).json({ message: 'Push token saved successfully' });
   } catch (error) {

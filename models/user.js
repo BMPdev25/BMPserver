@@ -149,6 +149,12 @@ const userSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  privacy: {
+    showPhone: { type: Boolean, default: false },
+    showEmail: { type: Boolean, default: false },
+    showLocation: { type: Boolean, default: true },
+    allowDirectMessages: { type: Boolean, default: true },
+  },
 }, {
   toJSON: { virtuals: true },
   toObject: { virtuals: true }

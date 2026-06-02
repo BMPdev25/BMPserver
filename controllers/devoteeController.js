@@ -135,7 +135,8 @@ exports.searchPriests = async (req, res, next) => {
     }
 
     // Get priest profiles with user details
-    const priests = await PriestProfile.find(finalFilter)
+    const [priests, total] = await Promise.all([
+      PriestProfile.find(finalFilter)
       .populate({
         path: "userId",
         select: "name profilePicture languagesSpoken",
@@ -147,7 +148,9 @@ exports.searchPriests = async (req, res, next) => {
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .lean()
-      .exec();
+      .exec(),
+      PriestProfile.countDocuments(finalFilter),
+    ]);
 
     const verifiedPriests = priests; 
 
