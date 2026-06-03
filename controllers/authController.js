@@ -97,14 +97,32 @@ exports.firebaseSync = async (req, res) => {
         if (isModified) await user.save();
     }
 
-    // Determine if profile is populated
-    let profileCompleted = !!user.name && user.name !== 'New User';
-    if (user.userType === 'priest' && profileCompleted) {
-        const PriestProfile = require('../models/priestProfile');
-        const profile = await PriestProfile.findOne({ userId: user._id });
-        if (!profile || !profile.isVerified) {
-            profileCompleted = false;
-        }
+    // Determine profile completion and verification state.
+    // profileCompleted = onboarding wizard done (NOT admin approval).
+    // verificationStatus and isVerified are priest-only fields.
+    let profileCompleted = false;
+    let verificationStatus = null;
+    let isVerified = false;
+
+    if (user.userType === 'devotee') {
+      profileCompleted = !!user.name && user.name !== 'New User';
+    } else if (user.userType === 'priest') {
+      const PriestProfile = require('../models/priestProfile');
+      const profile = await PriestProfile.findOne({ userId: user._id })
+        .select('onboardingCompleted isVerified verificationStatus')
+        .lean();
+
+      if (!profile) {
+        // PriestProfile missing — treat as wizard not started, log for visibility
+        console.warn(`[authSync] No PriestProfile found for priest userId=${user._id}`);
+        profileCompleted = false;
+        verificationStatus = 'incomplete';
+        isVerified = false;
+      } else {
+        profileCompleted = profile.onboardingCompleted === true;
+        verificationStatus = profile.verificationStatus || 'incomplete';
+        isVerified = profile.isVerified === true;
+      }
     }
 
     res.status(200).json({
@@ -114,7 +132,9 @@ exports.firebaseSync = async (req, res) => {
       phone: user.phone,
       userType: user.userType,
       firebaseUid: user.firebaseUid,
-      profileCompleted: profileCompleted
+      profileCompleted,
+      verificationStatus,
+      isVerified,
     });
   } catch (error) {
     console.error('Firebase sync error:', error);
