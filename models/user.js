@@ -10,15 +10,16 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
+    required: false,
     unique: true,
+    sparse: true,
     trim: true,
     lowercase: true,
   },
   phone: {
     type: String,
-    required: true,
     unique: true,
+    sparse: true,
   },
   password: {
     type: String,
@@ -268,8 +269,6 @@ userSchema.methods.toSafeObject = function () {
   return userObject;
 };
 
-// Performance indexes
-userSchema.index({ userType: 1 });
 userSchema.index({ userType: 1, isActive: 1 });
 
 userSchema.virtual('priestProfile', {

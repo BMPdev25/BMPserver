@@ -176,11 +176,10 @@ const firebaseLogin = async (idToken, userType = 'devotee') => {
   if (!user) {
     user = new User({
       name: 'New User',
-      email: email || `user_${uid}@example.com`,
-      phone: phone || `+${Math.floor(Math.random() * 10000000000)}`,
+      email: email || null,
+      phone: phone || null,
       firebaseUid: uid,
       userType,
-      password: 'firebase_login_no_password',
     });
     await user.save();
 

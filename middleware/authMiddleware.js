@@ -6,8 +6,10 @@ const User = require('../models/user');
 exports.protect = async (req, res, next) => {
   // Test bypass — only active when NODE_ENV=test and the custom header is present
   if (process.env.NODE_ENV === 'test' && req.headers['x-test-user-id']) {
+    const testId = req.headers['x-test-user-id'];
     req.user = {
-      id: req.headers['x-test-user-id'],
+      id: testId,
+      _id: testId,
       userType: req.headers['x-test-user-type'] || 'devotee',
     };
     return next();

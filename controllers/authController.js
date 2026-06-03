@@ -1,5 +1,6 @@
 // controllers/authController.js
 const User = require('../models/user');
+const OtpRecord = require('../models/otp');
 const admin = require('../config/firebase');
 
 // Synchronize Firebase User with MongoDB (Login & Signup unified)
@@ -29,35 +30,42 @@ exports.firebaseSync = async (req, res) => {
     // Find the user directly by Firebase UID
     let user = await User.findOne({ firebaseUid: uid });
 
-    // Fallback logic for seamlessly linking existing app users who just moved to Firebase
+    // Fallback: link existing account to Firebase UID if phone/email matches.
+    // Only allowed when the account has no Firebase UID yet — prevents account takeover.
     if (!user && (phone_number || email)) {
-       user = await User.findOne({ 
-         $or: [
-           { phone: phone_number }, 
-           { email: email }
-         ].filter(Boolean)
-       });
-       
-       if (user) {
-         user.firebaseUid = uid;
-         await user.save();
-       }
+      user = await User.findOne({
+        $or: [
+          { phone: phone_number },
+          { email: email },
+        ].filter(Boolean),
+      });
+
+      if (user) {
+        if (user.firebaseUid && user.firebaseUid !== uid) {
+          // Account already belongs to a different Firebase UID — reject to prevent takeover
+          return res.status(409).json({
+            success: false,
+            message: 'An account with this phone or email already exists. Please log in.',
+            code: 'ACCOUNT_EXISTS',
+          });
+        }
+        if (!user.firebaseUid) {
+          user.firebaseUid = uid;
+          await user.save();
+        }
+      }
     }
 
     // New Registration Flow
     if (!user) {
-       // userType validation
+       // userType validation — return 404 so the client knows to redirect to registration
        if (!userType) {
-         return res.status(400).json({ message: 'userType is required for new registration (priest or devotee)' });
+         return res.status(404).json({ message: 'No account found. Please register to continue.' });
        }
-       if (userType === 'priest' && (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)) {
-         return res.status(400).json({ message: 'Priests must select at least one language' });
-       }
-
        user = new User({
          name: name || decodedToken.name || 'New User',
          email: email || undefined,
-         phone: phone_number || phone || `+tmp${Date.now()}`,
+         phone: phone_number || phone || null,
          firebaseUid: uid,
          userType: userType,
          expoPushToken: pushToken || null,
@@ -68,9 +76,10 @@ exports.firebaseSync = async (req, res) => {
        // Handle Profiles
        if (userType === 'priest') {
           const PriestProfile = require('../models/priestProfile');
-          await PriestProfile.create({ 
-              userId: user._id, 
-              isVerified: true, // Auto-verified for dev purposes; change to false for prod
+          await PriestProfile.create({
+              userId: user._id,
+              isVerified: false,
+              verificationStatus: 'incomplete',
               experience: experience || 0,
               description: description || ''
           });
@@ -131,11 +140,6 @@ exports.savePushToken = async (req, res, next) => {
   }
 };
 
-// ─── In-memory OTP store (replace with Redis/DB for production) ───────────────
-// Structure: { [phone]: { otp, expiresAt, attempts } }
-const otpStore = {};
-
-const OTP_TTL_MS = 5 * 60 * 1000;   // 5 minutes
 const MAX_ATTEMPTS = 5;
 
 function generateOtp() {
@@ -159,26 +163,26 @@ exports.sendOtp = async (req, res) => {
       return res.status(400).json({ message: 'Invalid phone number format.' });
     }
 
-    // Rate-limit: don't let a user spam OTP requests
-    const existing = otpStore[e164];
-    if (existing && Date.now() < existing.expiresAt - (OTP_TTL_MS - 60000)) {
-      return res.status(429).json({ message: 'Please wait 1 minute before requesting a new OTP.' });
+    // Rate-limit: block if an OTP was created within the last 60 seconds
+    const recent = await OtpRecord.findOne({ phone: e164 });
+    if (recent) {
+      const secondsSince = (Date.now() - recent.createdAt.getTime()) / 1000;
+      if (secondsSince < 60) {
+        return res.status(429).json({
+          message: `Please wait ${Math.ceil(60 - secondsSince)} seconds before requesting another OTP.`,
+        });
+      }
+      await OtpRecord.deleteOne({ phone: e164 });
     }
 
     const otp = generateOtp();
-    otpStore[e164] = { otp, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 };
+    await OtpRecord.create({ phone: e164, otp, attempts: 0 });
 
-    // ── Send SMS ──────────────────────────────────────────────────────────────
     // TODO: plug in your SMS provider here (Twilio, Fast2SMS, etc.)
-    // For now, log OTP to console in development
-    console.log(`\n📱 OTP for ${e164}: ${otp}\n`);
-    // Example Twilio snippet:
-    // await twilioClient.messages.create({ body: `Your BookMyPujari OTP: ${otp}`, from: TWILIO_FROM, to: e164 });
-    // ─────────────────────────────────────────────────────────────────────────
+    console.log(`\nOTP for ${e164}: ${otp}\n`);
 
     res.status(200).json({
       message: `OTP sent to ${e164}`,
-      // Only send this in development — remove before production!
       ...(process.env.NODE_ENV === 'development' && { devOtp: otp }),
     });
   } catch (error) {
@@ -199,35 +203,41 @@ exports.verifyOtp = async (req, res) => {
     const normalised = phone.replace(/[\s\-]/g, '');
     const e164 = normalised.startsWith('+') ? normalised : `+91${normalised.replace(/^0+/, '')}`;
 
-    const record = otpStore[e164];
+    const record = await OtpRecord.findOne({ phone: e164 });
 
     if (!record) {
       return res.status(400).json({ message: 'OTP not found. Please request a new one.' });
     }
 
-    if (Date.now() > record.expiresAt) {
-      delete otpStore[e164];
+    // MongoDB TTL handles expiry, but double-check in case TTL sweep is delayed
+    const ageSeconds = (Date.now() - record.createdAt.getTime()) / 1000;
+    if (ageSeconds > 600) {
+      await OtpRecord.deleteOne({ phone: e164 });
       return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
     }
 
-    record.attempts += 1;
-    if (record.attempts > MAX_ATTEMPTS) {
-      delete otpStore[e164];
-      return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new OTP.' });
-    }
-
     if (record.otp !== otp.trim()) {
-      return res.status(400).json({ message: `Incorrect OTP. ${MAX_ATTEMPTS - record.attempts} attempt(s) remaining.` });
+      record.attempts += 1;
+      await record.save();
+
+      if (record.attempts >= MAX_ATTEMPTS) {
+        await OtpRecord.deleteOne({ phone: e164 });
+        return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new OTP.' });
+      }
+
+      const remaining = MAX_ATTEMPTS - record.attempts;
+      return res.status(400).json({
+        message: `Incorrect OTP. ${remaining} attempt(s) remaining.`,
+      });
     }
 
     // OTP is correct — clean up
-    delete otpStore[e164];
+    await OtpRecord.deleteOne({ phone: e164 });
 
     // Find or create the user in MongoDB by phone number
     let user = await User.findOne({ phone: e164 });
 
     if (!user) {
-      // New user — create a basic profile
       const type = userType || 'devotee';
       user = new User({
         name: 'New User',
@@ -242,15 +252,26 @@ exports.verifyOtp = async (req, res) => {
         await DevoteeProfile.create({ userId: user._id, isVerified: true });
       } else if (type === 'priest') {
         const PriestProfile = require('../models/priestProfile');
-        await PriestProfile.create({ userId: user._id, isVerified: false });
+        await PriestProfile.create({
+          userId: user._id,
+          isVerified: false,
+          verificationStatus: 'incomplete',
+        });
       }
     }
 
-    // Create a Firebase custom token so the frontend can sign in via Firebase SDK
+    // Create a Firebase custom token so the frontend can sign in via Firebase SDK.
+    // Use user._id as the Firebase uid so protect() can find the user by firebaseUid.
     const customToken = await admin.auth().createCustomToken(user._id.toString(), {
       phone: e164,
       userType: user.userType,
     });
+
+    // Store the Firebase uid on the user record so protect() can resolve it
+    if (!user.firebaseUid) {
+      user.firebaseUid = user._id.toString();
+      await user.save();
+    }
 
     res.status(200).json({
       customToken,
