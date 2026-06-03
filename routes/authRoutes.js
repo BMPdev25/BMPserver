@@ -15,9 +15,11 @@ router.post('/firebase-login', authController.firebaseSync);
 router.post('/register', authController.firebaseSync);
 router.post('/login', authController.firebaseSync);
 
-// Phone OTP Authentication
-router.post('/send-otp', sendOtpRules, validate, authController.sendOtp);
-router.post('/verify-otp', verifyOtpRules, validate, authController.verifyOtp);
+// Phone OTP Authentication — only active when OTP_ENABLED=true in .env
+if (process.env.OTP_ENABLED === 'true') {
+  router.post('/send-otp', sendOtpRules, validate, authController.sendOtp);
+  router.post('/verify-otp', verifyOtpRules, validate, authController.verifyOtp);
+}
 
 // Save Expo push token (Requires Valid Session)
 router.post('/push-token', protect, authController.savePushToken);
