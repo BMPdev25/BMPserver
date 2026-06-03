@@ -113,8 +113,18 @@ exports.firebaseSync = async (req, res) => {
         .lean();
 
       if (!profile) {
-        // PriestProfile missing — treat as wizard not started, log for visibility
-        console.warn(`[authSync] No PriestProfile found for priest userId=${user._id}`);
+        console.warn(`[authSync] No PriestProfile found for priest userId=${user._id} — creating`);
+        await PriestProfile.create({
+          userId: user._id,
+          isVerified: false,
+          verificationStatus: 'incomplete',
+          onboardingCompleted: false,
+          services: [],
+          location: { type: 'Point', coordinates: [0, 0] },
+          ratings: { average: 0, count: 0 },
+          earnings: { totalEarnings: 0, thisMonth: 0, pendingPayments: 0 },
+          currentAvailability: { status: 'offline' },
+        });
         profileCompleted = false;
         verificationStatus = 'incomplete';
         isVerified = false;
@@ -198,8 +208,8 @@ exports.sendOtp = async (req, res) => {
     const otp = generateOtp();
     await OtpRecord.create({ phone: e164, otp, attempts: 0 });
 
-    // TODO: plug in your SMS provider here (Twilio, Fast2SMS, etc.)
-    console.log(`\nOTP for ${e164}: ${otp}\n`);
+    const smsService = require('../services/smsService');
+    await smsService.sendOtp(e164, otp);
 
     res.status(200).json({
       message: `OTP sent to ${e164}`,

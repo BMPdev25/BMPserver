@@ -270,6 +270,7 @@ userSchema.methods.toSafeObject = function () {
 };
 
 userSchema.index({ userType: 1, isActive: 1 });
+userSchema.index({ userType: 1, isActive: 1, name: 1 }); // priest search suggestions
 
 userSchema.virtual('priestProfile', {
   ref: 'PriestProfile',

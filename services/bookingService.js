@@ -330,6 +330,30 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     throw error;
   }
 
+  if (status === 'confirmed') {
+    const bookingDay = new Date(booking.date);
+    const startOfDay = new Date(bookingDay);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(bookingDay);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    const conflict = await Booking.findOne({
+      _id: { $ne: booking._id },
+      priestId: booking.priestId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      startTime: booking.startTime,
+      status: { $in: ['confirmed', 'arrived', 'in_progress'] },
+    });
+
+    if (conflict) {
+      const error = new Error(
+        'You already have a confirmed booking at this time. Please check your calendar before accepting.'
+      );
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   if (status === 'completed' && booking.paymentStatus !== 'completed') {
     const error = new Error('Cannot mark booking complete — payment has not been verified');
     error.statusCode = 400;
@@ -445,65 +469,66 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
     try {
-      // Idempotency guard — prevent double credit if called more than once
-      const existingTx = await Transaction.findOne({
+      const priestShare = booking.basePrice;
+      const commissionAmount = booking.platformFee;
+
+      // Ensure wallet exists before creating the transaction
+      const wallet = await getOrCreateWallet(booking.priestId);
+
+      // ATOMIC gate: unique index on (bookingId, type='credit_for_booking') prevents
+      // double-credit even under concurrent requests. If this throws error.code 11000,
+      // another request already processed this booking.
+      const transaction = await Transaction.create({
+        priestId: booking.priestId,
+        walletId: wallet._id,
         bookingId: booking._id,
         type: 'credit_for_booking',
+        direction: 'inflow',
+        amount: priestShare,
         status: 'completed',
+        description: `Earnings for ${booking.ceremonyType}`,
       });
 
-      if (existingTx) {
-        console.warn(`[Wallet] Booking ${booking._id} already credited. Skipping ledger update.`);
-      } else {
-        const priestShare = booking.basePrice;
-        const commissionAmount = booking.platformFee;
+      // Atomic $inc — safe even if called concurrently (no read-modify-write)
+      await Wallet.findOneAndUpdate(
+        { priestId: booking.priestId },
+        { $inc: { currentBalance: priestShare, totalCredited: priestShare } }
+      );
 
-        const wallet = await getOrCreateWallet(booking.priestId);
-        wallet.currentBalance += priestShare;
-        wallet.totalCredited += priestShare;
-        await wallet.save();
+      await CompanyRevenue.create({
+        bookingId: booking._id,
+        priestId: booking.priestId,
+        totalAmount: booking.totalAmount,
+        commissionAmount: commissionAmount,
+        commissionRate: PLATFORM_FEE_PERCENT,
+        priestShare: priestShare,
+      });
 
-        await Transaction.create({
-          priestId: booking.priestId,
-          walletId: wallet._id,
-          bookingId: booking._id,
-          type: 'credit_for_booking',
-          direction: 'inflow',
-          amount: priestShare,
-          status: 'completed',
-          description: `Earnings for ${booking.ceremonyType}`,
-        });
+      await pushService.notifyPriestPaymentCredited(
+        booking.priestId._id || booking.priestId,
+        booking,
+        priestShare
+      );
 
-        await CompanyRevenue.create({
-          bookingId: booking._id,
-          priestId: booking.priestId,
-          totalAmount: booking.totalAmount,
-          commissionAmount: commissionAmount,
-          commissionRate: PLATFORM_FEE_PERCENT,
-          priestShare: priestShare,
-        });
-
-        await pushService.notifyPriestPaymentCredited(
-          booking.priestId._id || booking.priestId,
-          booking,
-          priestShare
-        );
-
-        // pendingPayments = money credited to wallet but not yet withdrawn
-        await PriestProfile.findOneAndUpdate(
-          { userId: booking.priestId },
-          {
-            $inc: {
-              ceremonyCount: 1,
-              'earnings.totalEarnings': priestShare,
-              'earnings.thisMonth': priestShare,
-              'earnings.pendingPayments': priestShare,
-            },
-          }
-        );
-      }
+      // pendingPayments = money credited to wallet but not yet withdrawn
+      await PriestProfile.findOneAndUpdate(
+        { userId: booking.priestId },
+        {
+          $inc: {
+            ceremonyCount: 1,
+            'earnings.totalEarnings': priestShare,
+            'earnings.thisMonth': priestShare,
+            'earnings.pendingPayments': priestShare,
+          },
+        }
+      );
     } catch (e) {
-      console.warn('Ledger update failed:', e.message);
+      if (e.code === 11000) {
+        // Duplicate key on (bookingId, type) — already processed, not an error
+        console.log(`[Wallet] Booking ${booking._id} already credited. Skipping.`);
+      } else {
+        console.warn('Ledger update failed:', e.message);
+      }
     }
   }
 
@@ -523,37 +548,74 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
 };
 
 const cancelBookingByDevotee = async (bookingId, userId, reason) => {
-  const booking = await Booking.findById(bookingId);
-  if (!booking) {
-    const error = new Error('Booking not found');
-    error.statusCode = 404;
-    throw error;
-  }
+  const cancellationReason = reason || 'Cancelled by devotee';
 
-  if (booking.devoteeId.toString() !== userId) {
-    const error = new Error('Not authorized to cancel this booking');
-    error.statusCode = 403;
-    throw error;
-  }
+  // Atomic status change — acts as the concurrency gate.
+  // Both devoteeId AND status filter ensure only one request succeeds.
+  const updated = await Booking.findOneAndUpdate(
+    {
+      _id: bookingId,
+      devoteeId: userId,
+      status: { $in: ['pending', 'confirmed'] },
+    },
+    {
+      $set: {
+        status: 'cancelled',
+        cancellationReason,
+        cancellationDate: new Date(),
+      },
+      $push: {
+        statusHistory: {
+          status: 'cancelled',
+          timestamp: new Date(),
+          updatedBy: userId,
+          reason: cancellationReason,
+        },
+      },
+    },
+    { new: true }
+  );
 
-  if (!['pending', 'confirmed'].includes(booking.status)) {
-    const error = new Error(`Cannot cancel booking in '${booking.status}' status`);
+  if (!updated) {
+    // Diagnose why the update did not match
+    const existing = await Booking.findById(bookingId);
+    if (!existing) {
+      const error = new Error('Booking not found');
+      error.statusCode = 404;
+      throw error;
+    }
+    if (existing.devoteeId.toString() !== userId.toString()) {
+      const error = new Error('Not authorized to cancel this booking');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (existing.status === 'cancelled') {
+      const error = new Error('Booking is already cancelled');
+      error.statusCode = 409;
+      throw error;
+    }
+    const error = new Error(`Cannot cancel booking in '${existing.status}' status`);
     error.statusCode = 400;
     throw error;
   }
 
-  // If payment was made, initiate Razorpay refund before cancelling
-  if (booking.paymentStatus === 'completed' && booking.paymentDetails?.rzpPaymentId) {
+  // Only ONE request reaches here — safe to attempt refund
+  if (updated.paymentStatus === 'completed' && updated.paymentDetails?.rzpPaymentId) {
     try {
       const rzp = getRazorpayInstance();
-      const refund = await rzp.payments.refund(booking.paymentDetails.rzpPaymentId, {
-        amount: booking.totalAmount * 100,
-        notes: { reason: reason || 'Cancelled by devotee' },
+      const refund = await rzp.payments.refund(updated.paymentDetails.rzpPaymentId, {
+        amount: updated.totalAmount * 100,
+        notes: { reason: cancellationReason },
       });
-      booking.paymentDetails.refundAmount = booking.totalAmount;
-      booking.paymentDetails.refundReason = reason || 'Cancelled by devotee';
-      booking.paymentDetails.refundDate = new Date();
-      booking.paymentStatus = 'refunded';
+      await Booking.findByIdAndUpdate(bookingId, {
+        $set: {
+          paymentStatus: 'refunded',
+          'paymentDetails.refundAmount': updated.totalAmount,
+          'paymentDetails.refundReason': cancellationReason,
+          'paymentDetails.refundDate': new Date(),
+        },
+      });
+      updated.paymentStatus = 'refunded';
       console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
     } catch (refundErr) {
       // Log for support team — do not block the cancellation
@@ -561,24 +623,13 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
     }
   }
 
-  booking.status = 'cancelled';
-  booking.cancellationReason = reason || 'Cancelled by devotee';
-  booking.cancellationDate = new Date();
-  booking.statusHistory.push({
-    status: 'cancelled',
-    timestamp: new Date(),
-    updatedBy: userId,
-    reason: booking.cancellationReason,
-  });
-
-  await booking.save();
   await pushService.notifyPriestBookingCancelled(
-    booking.priestId._id || booking.priestId,
-    booking
+    updated.priestId._id || updated.priestId,
+    updated
   );
   await updateDevoteeReliability(userId, 'cancellation').catch(() => {});
 
-  return booking;
+  return updated;
 };
 
 const createPaymentOrder = async (bookingId, userId) => {
@@ -603,15 +654,28 @@ const createPaymentOrder = async (bookingId, userId) => {
 
   const rzp = getRazorpayInstance();
 
-  // If an order already exists, try to return it rather than creating a new one
+  // If an order already exists, validate its state before returning it
   if (booking.paymentDetails?.rzpOrderId) {
     try {
       const existingOrder = await rzp.orders.fetch(booking.paymentDetails.rzpOrderId);
+
+      if (existingOrder.status === 'paid') {
+        const err = new Error('This booking has already been paid for');
+        err.statusCode = 409;
+        throw err;
+      }
+
       if (existingOrder.status === 'created') {
         return existingOrder;
       }
-    } catch (err) {
-      console.warn('[Payment] Existing order fetch failed, creating new one:', err.message);
+
+      // Status is 'attempted' or unknown — fall through to create a fresh order
+      console.warn(
+        `[Payment] Order ${existingOrder.id} status: ${existingOrder.status} — creating new order`
+      );
+    } catch (fetchErr) {
+      if (fetchErr.statusCode === 409) throw fetchErr;
+      console.warn('[Payment] Could not fetch existing order — creating new one:', fetchErr.message);
     }
   }
 
@@ -623,6 +687,8 @@ const createPaymentOrder = async (bookingId, userId) => {
 
   const order = await rzp.orders.create(options);
   booking.paymentDetails.rzpOrderId = order.id;
+  // 30-minute window to complete payment
+  booking.paymentExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
   await booking.save();
 
   return order;
@@ -635,6 +701,17 @@ const verifyPayment = async (bookingId, paymentData) => {
   if (!booking) {
     const error = new Error('Booking not found');
     error.statusCode = 404;
+    throw error;
+  }
+
+  // Reject if payment window has expired
+  if (
+    booking.paymentExpiresAt &&
+    new Date() > booking.paymentExpiresAt &&
+    booking.paymentStatus !== 'completed'
+  ) {
+    const error = new Error('Payment session expired. Please initiate a new payment order.');
+    error.statusCode = 410;
     throw error;
   }
 

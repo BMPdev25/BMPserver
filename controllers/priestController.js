@@ -344,17 +344,26 @@ exports.uploadDocument = async (req, res, next) => {
   }
 };
 
-// Submit verification (Mock)
+// Submit verification
 exports.submitVerification = async (req, res, next) => {
   try {
-    await PriestProfile.findOneAndUpdate(
-      { userId: req.user.id },
-      {
-        verificationStatus: 'pending',  // ← was missing
-        onboardingCompleted: true,       // ← ensure this is set
-        isVerified: false,
-      }
-    );
+    const profile = await PriestProfile.findOne({ userId: req.user.id });
+    if (!profile) {
+      return res.status(404).json({ success: false, message: 'Priest profile not found' });
+    }
+
+    if (!profile.services || profile.services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must add at least one service before submitting for verification.',
+      });
+    }
+
+    profile.verificationStatus = 'pending';
+    profile.onboardingCompleted = true;
+    // isVerified stays false until admin approves; pre-save hook keeps it in sync
+    await profile.save();
+
     res.status(200).json({
       success: true,
       message: 'Verification profile submitted for review.',
@@ -451,7 +460,8 @@ exports.getPublicProfile = async (req, res, next) => {
 exports.getPublicReviews = async (req, res, next) => {
   try {
     const { priestProfileId } = req.params;
-    const { page = 1, limit = 5 } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
     const Rating = require('../models/rating');
 
     // Step 1: resolve PriestProfile → User._id
@@ -471,8 +481,8 @@ exports.getPublicReviews = async (req, res, next) => {
       Rating.find({ priestId: profile.userId })
         .populate('userId', 'name profilePicture') // devotee info
         .sort({ createdAt: -1 })
-        .skip((parseInt(page) - 1) * parseInt(limit))
-        .limit(parseInt(limit))
+        .skip((page - 1) * limit)
+        .limit(limit)
         .lean(),
       Rating.countDocuments({ priestId: profile.userId }),
     ]);

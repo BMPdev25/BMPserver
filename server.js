@@ -22,7 +22,12 @@ const walletRoutes = require('./routes/walletRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const { scheduleReminders, schedulePushReminders } = require('./jobs/cronJobs');
+const {
+  scheduleReminders,
+  schedulePushReminders,
+  scheduleExpiredPaymentCleanup,
+  scheduleStaleSearchingCleanup,
+} = require('./jobs/cronJobs');
 
 // Load environment variables
 dotenv.config();
@@ -30,6 +35,8 @@ dotenv.config();
 // Start cron jobs
 scheduleReminders();
 schedulePushReminders();
+scheduleExpiredPaymentCleanup();
+scheduleStaleSearchingCleanup();
 
 // Create Express app
 const app = express();

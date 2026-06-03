@@ -209,6 +209,10 @@ const bookingSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  paymentExpiresAt: {
+    type: Date,
+    default: null,
+  },
 });
 
 // Create indexes for better query performance

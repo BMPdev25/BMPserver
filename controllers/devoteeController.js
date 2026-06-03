@@ -5,6 +5,8 @@ const User = require('../models/user');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
 const Review = require('../models/review');
+const PriestProfile = require('../models/priestProfile');
+const Ceremony = require('../models/ceremony');
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res, next) => {
@@ -56,16 +58,9 @@ exports.searchPriests = async (req, res, next) => {
       );
     }
 
-    // 2. City Lookup
+    // 2. City Lookup — filter on PriestProfile.address.town (User has no location.city field)
     if (city) {
-      preQueries.push(
-        User.find({ 'location.city': new RegExp(city, 'i') })
-          .select('_id').lean()
-          .then(users => {
-            if (users.length > 0) filter.userId = { $in: users.map(u => u._id) };
-            return users.length > 0;
-          })
-      );
+      filter['address.town'] = new RegExp(city, 'i');
     }
 
     // 3. Search Term Lookup (Name)

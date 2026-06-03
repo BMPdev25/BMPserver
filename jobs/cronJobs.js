@@ -132,4 +132,56 @@ const schedulePushReminders = () => {
   })
 }
 
-module.exports = { scheduleReminders, schedulePushReminders };
+// Every 15 minutes — cancel bookings whose payment window expired before payment was completed
+const scheduleExpiredPaymentCleanup = () => {
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      const expired = await Booking.find({
+        status: 'pending',
+        paymentStatus: { $ne: 'completed' },
+        paymentExpiresAt: { $lt: new Date() },
+      });
+      for (const b of expired) {
+        b.status = 'cancelled';
+        b.cancellationReason = 'Payment not completed within time limit';
+        b.cancellationDate = new Date();
+        b.statusHistory.push({
+          status: 'cancelled',
+          timestamp: new Date(),
+          reason: 'Payment not completed within time limit',
+        });
+        await b.save();
+      }
+      if (expired.length > 0) {
+        console.log(`[Cron] Cancelled ${expired.length} expired unpaid bookings`);
+      }
+    } catch (err) {
+      console.error('[Cron] Expired payment cleanup failed:', err.message);
+    }
+  });
+};
+
+// Every hour — delete stale 'searching' bookings older than 2 hours (no priest ever assigned)
+const scheduleStaleSearchingCleanup = () => {
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const result = await Booking.deleteMany({
+        status: 'searching',
+        createdAt: { $lt: cutoff },
+      });
+      if (result.deletedCount > 0) {
+        console.log(`[Cron] Cleaned ${result.deletedCount} stale searching bookings`);
+      }
+    } catch (err) {
+      console.error('[Cron] Stale searching cleanup failed:', err.message);
+    }
+  });
+};
+
+module.exports = {
+  scheduleReminders,
+  schedulePushReminders,
+  scheduleExpiredPaymentCleanup,
+  scheduleStaleSearchingCleanup,
+};

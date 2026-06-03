@@ -12,10 +12,16 @@ const createBookingRules = [
     .notEmpty().withMessage('Date is required')
     .isISO8601().withMessage('Date must be a valid date (YYYY-MM-DD)')
     .custom(value => {
-      if (new Date(value) < new Date().setHours(0, 0, 0, 0)) {
-        throw new Error('Booking date cannot be in the past')
+      const bookingDate = new Date(value);
+      if (bookingDate < new Date().setHours(0, 0, 0, 0)) {
+        throw new Error('Booking date cannot be in the past');
       }
-      return true
+      const sixMonthsLater = new Date();
+      sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+      if (bookingDate > sixMonthsLater) {
+        throw new Error('Bookings can only be made up to 6 months in advance');
+      }
+      return true;
     }),
   body('startTime')
     .notEmpty().withMessage('Start time is required')

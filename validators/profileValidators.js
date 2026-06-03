@@ -28,6 +28,12 @@ const updatePriestProfileRules = [
     .optional()
     .isFloat({ min: 100, max: 500000 })
       .withMessage('Service price must be between ₹100 and ₹5,00,000'),
+  body('services.*.ceremonyId')
+    .optional()
+    .isMongoId().withMessage('Invalid ceremony ID'),
+  body('services.*.durationMinutes')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Duration must be at least 1 minute'),
 ]
 
 const addAddressRules = [
