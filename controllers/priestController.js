@@ -194,6 +194,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
       minPrice,
       maxPrice,
       languages,
+      city,
     } = req.query;
 
     // Build geo filter (optional)
@@ -238,6 +239,11 @@ exports.getAvailablePujaris = async (req, res, next) => {
     if (languages) {
       const langArray = Array.isArray(languages) ? languages : [languages];
       filter['languagesSpoken'] = { $in: langArray };
+    }
+
+    // City/town filter
+    if (city) {
+      filter['address.town'] = new RegExp(city.trim(), 'i');
     }
 
     // Price filter (on services array)
