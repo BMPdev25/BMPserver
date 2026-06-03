@@ -32,6 +32,9 @@ const createBookingRules = [
   body('location.address')
     .notEmpty().withMessage('Location address is required')
     .isLength({ max: 300 }).withMessage('Address too long'),
+  body('location.city')
+    .notEmpty().withMessage('Location city is required')
+    .isLength({ max: 100 }).withMessage('City name too long'),
 ]
 
 const verifyPaymentRules = [

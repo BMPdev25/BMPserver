@@ -160,20 +160,6 @@ exports.markAllNotificationsAsRead = async (req, res, next) => {
   }
 };
 
-// Complete a booking (convenience wrapper for status → 'completed')
-exports.completeBooking = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const booking = await bookingService.updateBookingStatus(id, req.user.id, {
-      status: 'completed',
-      reason: req.body.reason,
-    });
-    res.status(200).json({ success: true, message: 'Booking completed successfully', booking });
-  } catch (error) {
-    next(error);
-  }
-};
-
 // Update booking status
 exports.updateBookingStatus = async (req, res, next) => {
   try {
@@ -262,10 +248,11 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['services.price'] = priceFilter;
     }
 
-    // Sort mapping ($geoWithin does not auto-sort by distance, so fall back to rating)
+    // Sort mapping ($geoWithin does not produce distance metadata, so distance sort is unavailable)
     const sortMap = {
       rating:     { 'ratings.average': -1 },
-      distance:   { 'ratings.average': -1 },
+      experience: { experience: -1 },
+      newest:     { createdAt: -1 },
       price_asc:  { 'services.price': 1 },
       price_desc: { 'services.price': -1 },
     };
@@ -398,6 +385,12 @@ exports.getDocument = async (req, res, next) => {
 exports.acceptInstantBooking = async (req, res, next) => {
   try {
     const { bookingId } = req.body;
+    const mongoose = require('mongoose');
+
+    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ success: false, message: 'Valid booking ID is required' });
+    }
+
     const booking = await bookingService.updateBookingStatus(bookingId, req.user.id, {
       status: 'confirmed',
     });

@@ -57,6 +57,7 @@ const bookingSchema = new mongoose.Schema({
       'in_progress',
       'completed',
       'cancelled',
+      'rejected',
       'expired',
     ],
     default: 'pending',
@@ -142,6 +143,9 @@ const bookingSchema = new mongoose.Schema({
     receiptNumber: {
       type: String,
     },
+    rzpOrderId: { type: String, default: null },
+    rzpPaymentId: { type: String, default: null },
+    rzpSignature: { type: String, default: null },
   },
   // Rating and Review
   rating: {

@@ -60,6 +60,27 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
     query.status = status;
   }
 
+  // Apply category as a DB-level filter so pagination counts are accurate
+  if (category && category !== 'all') {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(now);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    if (category === 'today') {
+      query.date = { $gte: todayStart, $lte: todayEnd };
+      if (!query.status) query.status = { $in: ['confirmed', 'arrived', 'in_progress'] };
+    } else if (category === 'upcoming') {
+      query.date = { $gt: todayEnd };
+      if (!query.status) query.status = { $in: ['pending', 'confirmed'] };
+    } else if (category === 'completed') {
+      query.status = 'completed';
+    }
+  }
+
+  const total = await Booking.countDocuments(query);
+
   let bookings = await Booking.find(query)
     .select('ceremonyType date startTime endTime status paymentStatus totalAmount basePrice platformFee location devoteeId priestId paymentDetails.receiptNumber createdAt updatedAt')
     .populate('devoteeId', 'name profilePicture createdAt')
@@ -74,18 +95,12 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
     return bookingObj;
   });
 
-  if (category && category !== 'all') {
-    bookings = bookings.filter((booking) => booking.category === category);
-  }
-
   const categorizedBookings = {
     today: bookings.filter((b) => b.category === 'today'),
     upcoming: bookings.filter((b) => b.category === 'upcoming'),
     completed: bookings.filter((b) => b.category === 'completed'),
     all: bookings,
   };
-
-  const total = await Booking.countDocuments(query);
 
   return {
     data: category && category !== 'all' ? categorizedBookings[category] : categorizedBookings,
@@ -117,7 +132,9 @@ const getBookingDetails = async (bookingId, userId) => {
 
   const devoteeIdStr = booking.devoteeId?._id?.toString() || booking.devoteeId?.toString();
   const priestIdStr = booking.priestId?._id?.toString() || booking.priestId?.toString();
-  if (devoteeIdStr && priestIdStr && devoteeIdStr !== userId && priestIdStr !== userId) {
+  const callerIsDevotee = devoteeIdStr === userId;
+  const callerIsPriest = priestIdStr === userId;
+  if (!callerIsDevotee && !callerIsPriest) {
     const error = new Error('Access denied');
     error.statusCode = 403;
     throw error;
@@ -260,7 +277,7 @@ const createBooking = async (devoteeId, bookingData) => {
     },
     statusHistory: [
       {
-        status: 'confirmed',
+        status: 'pending',
         timestamp: new Date(),
         updatedBy: devoteeId,
         reason: 'Booking created',
@@ -285,8 +302,8 @@ const createBooking = async (devoteeId, bookingData) => {
 
 const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   const VALID_TRANSITIONS = {
-    pending: ['confirmed', 'cancelled'],
-    requested: ['confirmed', 'cancelled'],
+    pending: ['confirmed', 'cancelled', 'rejected'],
+    requested: ['confirmed', 'cancelled', 'rejected'],
     confirmed: ['arrived', 'completed', 'cancelled'],
     arrived: ['in_progress', 'cancelled'],
     in_progress: ['completed', 'cancelled'],
@@ -313,6 +330,12 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     throw error;
   }
 
+  if (status === 'completed' && booking.paymentStatus !== 'completed') {
+    const error = new Error('Cannot mark booking complete — payment has not been verified');
+    error.statusCode = 400;
+    throw error;
+  }
+
   if (['arrived', 'in_progress'].includes(status)) {
     const now = new Date();
     const bookingDate = new Date(booking.date);
@@ -331,7 +354,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   booking.status = status;
   if (status === 'completed') {
     booking.completionDate = new Date();
-  } else if (status === 'cancelled') {
+  } else if (status === 'cancelled' || status === 'rejected') {
     booking.cancellationDate = new Date();
     booking.cancellationReason = reason;
   }
@@ -379,10 +402,16 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   // Auto-cancel concurrent pending requests if confirmed
   if (status === 'confirmed') {
     try {
+      const bookingDay = new Date(booking.date);
+      const startOfDay = new Date(bookingDay);
+      startOfDay.setUTCHours(0, 0, 0, 0);
+      const endOfDay = new Date(bookingDay);
+      endOfDay.setUTCHours(23, 59, 59, 999);
+
       const concurrent = await Booking.find({
         _id: { $ne: booking._id },
         devoteeId: booking.devoteeId,
-        date: booking.date,
+        date: { $gte: startOfDay, $lte: endOfDay },
         startTime: booking.startTime,
         status: 'pending',
       });
@@ -416,58 +445,70 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
     try {
-      const priestShare = booking.basePrice;
-      const commissionAmount = booking.platformFee;
-
-      const wallet = await getOrCreateWallet(booking.priestId);
-      wallet.currentBalance += priestShare;
-      wallet.totalCredited += priestShare;
-      await wallet.save();
-
-      await Transaction.create({
-        priestId: booking.priestId,
-        walletId: wallet._id,
+      // Idempotency guard — prevent double credit if called more than once
+      const existingTx = await Transaction.findOne({
         bookingId: booking._id,
         type: 'credit_for_booking',
-        direction: 'inflow',
-        amount: priestShare,
         status: 'completed',
-        description: `Earnings for ${booking.ceremonyType}`,
       });
 
-      await CompanyRevenue.create({
-        bookingId: booking._id,
-        priestId: booking.priestId,
-        totalAmount: booking.totalAmount,
-        commissionAmount: commissionAmount,
-        commissionRate: PLATFORM_FEE_PERCENT,
-        priestShare: priestShare,
-      });
+      if (existingTx) {
+        console.warn(`[Wallet] Booking ${booking._id} already credited. Skipping ledger update.`);
+      } else {
+        const priestShare = booking.basePrice;
+        const commissionAmount = booking.platformFee;
 
-      await pushService.notifyPriestPaymentCredited(
-        booking.priestId._id || booking.priestId,
-        booking,
-        priestShare
-      );
+        const wallet = await getOrCreateWallet(booking.priestId);
+        wallet.currentBalance += priestShare;
+        wallet.totalCredited += priestShare;
+        await wallet.save();
 
-      await PriestProfile.findOneAndUpdate(
-        { userId: booking.priestId },
-        {
-          $inc: {
-            ceremonyCount: 1,
-            'earnings.totalEarnings': priestShare,
-            'earnings.thisMonth': priestShare,
-            'earnings.pendingPayments': priestShare,
-          },
-        }
-      );
+        await Transaction.create({
+          priestId: booking.priestId,
+          walletId: wallet._id,
+          bookingId: booking._id,
+          type: 'credit_for_booking',
+          direction: 'inflow',
+          amount: priestShare,
+          status: 'completed',
+          description: `Earnings for ${booking.ceremonyType}`,
+        });
+
+        await CompanyRevenue.create({
+          bookingId: booking._id,
+          priestId: booking.priestId,
+          totalAmount: booking.totalAmount,
+          commissionAmount: commissionAmount,
+          commissionRate: PLATFORM_FEE_PERCENT,
+          priestShare: priestShare,
+        });
+
+        await pushService.notifyPriestPaymentCredited(
+          booking.priestId._id || booking.priestId,
+          booking,
+          priestShare
+        );
+
+        // pendingPayments = money credited to wallet but not yet withdrawn
+        await PriestProfile.findOneAndUpdate(
+          { userId: booking.priestId },
+          {
+            $inc: {
+              ceremonyCount: 1,
+              'earnings.totalEarnings': priestShare,
+              'earnings.thisMonth': priestShare,
+              'earnings.pendingPayments': priestShare,
+            },
+          }
+        );
+      }
     } catch (e) {
       console.warn('Ledger update failed:', e.message);
     }
   }
 
   // Reliability recalculation
-  if (status === 'completed' || status === 'cancelled') {
+  if (status === 'completed' || status === 'cancelled' || status === 'rejected') {
     recalculateReliability(booking.priestId).catch(() => {});
     if (status === 'completed')
       updateDevoteeReliability(booking.devoteeId, 'completion').catch(() => {});
@@ -501,6 +542,25 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
     throw error;
   }
 
+  // If payment was made, initiate Razorpay refund before cancelling
+  if (booking.paymentStatus === 'completed' && booking.paymentDetails?.rzpPaymentId) {
+    try {
+      const rzp = getRazorpayInstance();
+      const refund = await rzp.payments.refund(booking.paymentDetails.rzpPaymentId, {
+        amount: booking.totalAmount * 100,
+        notes: { reason: reason || 'Cancelled by devotee' },
+      });
+      booking.paymentDetails.refundAmount = booking.totalAmount;
+      booking.paymentDetails.refundReason = reason || 'Cancelled by devotee';
+      booking.paymentDetails.refundDate = new Date();
+      booking.paymentStatus = 'refunded';
+      console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
+    } catch (refundErr) {
+      // Log for support team — do not block the cancellation
+      console.error(`[Refund] FAILED for booking ${bookingId}:`, refundErr.message);
+    }
+  }
+
   booking.status = 'cancelled';
   booking.cancellationReason = reason || 'Cancelled by devotee';
   booking.cancellationDate = new Date();
@@ -529,7 +589,32 @@ const createPaymentOrder = async (bookingId, userId) => {
     throw error;
   }
 
+  if (booking.devoteeId.toString() !== userId.toString()) {
+    const error = new Error('Access denied');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  if (booking.paymentStatus === 'completed') {
+    const error = new Error('This booking has already been paid for');
+    error.statusCode = 409;
+    throw error;
+  }
+
   const rzp = getRazorpayInstance();
+
+  // If an order already exists, try to return it rather than creating a new one
+  if (booking.paymentDetails?.rzpOrderId) {
+    try {
+      const existingOrder = await rzp.orders.fetch(booking.paymentDetails.rzpOrderId);
+      if (existingOrder.status === 'created') {
+        return existingOrder;
+      }
+    } catch (err) {
+      console.warn('[Payment] Existing order fetch failed, creating new one:', err.message);
+    }
+  }
+
   const options = {
     amount: booking.totalAmount * 100,
     currency: 'INR',
@@ -545,6 +630,21 @@ const createPaymentOrder = async (bookingId, userId) => {
 
 const verifyPayment = async (bookingId, paymentData) => {
   const { rzpPaymentId, rzpOrderId, rzpSignature } = paymentData;
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const error = new Error('Booking not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Validate submitted orderId matches what we issued for this booking
+  if (booking.paymentDetails?.rzpOrderId && booking.paymentDetails.rzpOrderId !== rzpOrderId) {
+    const error = new Error('Order ID mismatch');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
   hmac.update(rzpOrderId + '|' + rzpPaymentId);
   const generatedSignature = hmac.digest('hex');
@@ -552,13 +652,6 @@ const verifyPayment = async (bookingId, paymentData) => {
   if (generatedSignature !== rzpSignature) {
     const error = new Error('Payment verification failed');
     error.statusCode = 400;
-    throw error;
-  }
-
-  const booking = await Booking.findById(bookingId);
-  if (!booking) {
-    const error = new Error('Booking not found');
-    error.statusCode = 404;
     throw error;
   }
 
