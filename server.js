@@ -33,10 +33,12 @@ const {
 dotenv.config();
 
 // Start cron jobs
-scheduleReminders();
-schedulePushReminders();
-scheduleExpiredPaymentCleanup();
-scheduleStaleSearchingCleanup();
+if (process.env.NODE_ENV !== 'test') {
+  scheduleReminders();
+  schedulePushReminders();
+  scheduleExpiredPaymentCleanup();
+  scheduleStaleSearchingCleanup();
+}
 
 // Create Express app
 const app = express();

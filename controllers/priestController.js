@@ -383,6 +383,16 @@ exports.submitVerification = async (req, res, next) => {
       });
     }
 
+    const hasGovernmentId = (profile.verificationDocuments || []).some(
+      (d) => d.type === 'government_id' && d.url
+    );
+    if (!hasGovernmentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must upload a government ID document before submitting for verification.',
+      });
+    }
+
     profile.verificationStatus = 'pending';
     profile.onboardingCompleted = true;
     // isVerified stays false until admin approves; pre-save hook keeps it in sync

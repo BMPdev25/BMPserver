@@ -30,6 +30,70 @@ const getRazorpayInstance = () => {
   return razorpay;
 };
 
+/**
+ * Issue a Razorpay refund for a paid booking and mark it refunded.
+ * Safe to call on any booking — no-ops unless paymentStatus === 'completed'
+ * and a Razorpay payment id is present. Never throws: a refund failure is
+ * logged for the support team but must not block the cancellation flow.
+ *
+ * @param {string} bookingId   - Booking._id
+ * @param {object} booking     - the in-memory booking (mutated to reflect refund)
+ * @param {string} reason      - refund reason recorded on the booking
+ */
+const issueRefundIfPaid = async (bookingId, booking, reason) => {
+  if (booking.paymentStatus !== 'completed' || !booking.paymentDetails?.rzpPaymentId) {
+    return;
+  }
+  try {
+    const rzp = getRazorpayInstance();
+    const refund = await rzp.payments.refund(booking.paymentDetails.rzpPaymentId, {
+      amount: booking.totalAmount * 100,
+      notes: { reason },
+    });
+    await Booking.findByIdAndUpdate(bookingId, {
+      $set: {
+        paymentStatus: 'refunded',
+        'paymentDetails.refundAmount': booking.totalAmount,
+        'paymentDetails.refundReason': reason,
+        'paymentDetails.refundDate': new Date(),
+      },
+    });
+    booking.paymentStatus = 'refunded';
+    console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
+  } catch (refundErr) {
+    // Log for support team — do not block the cancellation
+    console.error(`[Refund] FAILED for booking ${bookingId}:`, refundErr.message);
+  }
+};
+
+/**
+ * Convert an "HH:MM" 24-hour time string to minutes past midnight.
+ * Returns NaN if the input is missing or malformed.
+ */
+const toMinutes = (time) => {
+  if (typeof time !== 'string') return NaN;
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return NaN;
+  return h * 60 + m;
+};
+
+/**
+ * True if the two [start, end) time intervals overlap on the same day.
+ * Touching boundaries (one ends exactly when the other starts) do NOT overlap.
+ * If either booking is missing valid times, falls back to exact startTime
+ * equality so we never silently skip a potential clash.
+ */
+const timesOverlap = (startA, endA, startB, endB) => {
+  const aStart = toMinutes(startA);
+  const aEnd = toMinutes(endA);
+  const bStart = toMinutes(startB);
+  const bEnd = toMinutes(endB);
+  if ([aStart, aEnd, bStart, bEnd].some(Number.isNaN)) {
+    return startA === startB;
+  }
+  return aStart < bEnd && bStart < aEnd;
+};
+
 const categorizeBooking = (booking) => {
   const now = new Date();
   const bookingDate = new Date(booking.date);
@@ -337,17 +401,23 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     const endOfDay = new Date(bookingDay);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
-    const conflict = await Booking.findOne({
+    // Fetch all of the priest's active bookings that day, then check for an
+    // actual time-interval overlap in JS — matching only on identical startTime
+    // would let overlapping ranges (e.g. 10:00–12:00 vs 11:00–13:00) slip through.
+    const sameDayBookings = await Booking.find({
       _id: { $ne: booking._id },
       priestId: booking.priestId,
       date: { $gte: startOfDay, $lte: endOfDay },
-      startTime: booking.startTime,
       status: { $in: ['confirmed', 'arrived', 'in_progress'] },
-    });
+    }).select('startTime endTime');
+
+    const conflict = sameDayBookings.find((other) =>
+      timesOverlap(booking.startTime, booking.endTime, other.startTime, other.endTime)
+    );
 
     if (conflict) {
       const error = new Error(
-        'You already have a confirmed booking at this time. Please check your calendar before accepting.'
+        'You already have a confirmed booking that overlaps this time. Please check your calendar before accepting.'
       );
       error.statusCode = 409;
       throw error;
@@ -400,6 +470,8 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   }
 
   if (status === 'cancelled') {
+    // Refund the devotee if they had already paid before the priest cancelled
+    await issueRefundIfPaid(booking._id, booking, reason || 'Cancelled by priest');
     // This endpoint is priestOnly — the priest is always the caller here
     await pushService.notifyDevoteeCancelledByPriest(
       booking.devoteeId._id || booking.devoteeId,
@@ -408,6 +480,8 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   }
 
   if (status === 'rejected') {
+    // Refund the devotee if they had already paid before the priest declined
+    await issueRefundIfPaid(booking._id, booking, reason || 'Declined by priest');
     await pushService.notifyDevoteeBookingDeclined(
       booking.devoteeId._id || booking.devoteeId,
       booking
@@ -423,13 +497,19 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
       const endOfDay = new Date(bookingDay);
       endOfDay.setUTCHours(23, 59, 59, 999);
 
-      const concurrent = await Booking.find({
+      const sameDayPending = await Booking.find({
         _id: { $ne: booking._id },
         devoteeId: booking.devoteeId,
         date: { $gte: startOfDay, $lte: endOfDay },
-        startTime: booking.startTime,
         status: 'pending',
       });
+
+      // Only cancel the devotee's other pending requests whose time actually
+      // overlaps the one just confirmed — non-overlapping same-day requests
+      // (e.g. a morning and an evening ceremony) must be left intact.
+      const concurrent = sameDayPending.filter((other) =>
+        timesOverlap(booking.startTime, booking.endTime, other.startTime, other.endTime)
+      );
 
       for (const other of concurrent) {
         other.status = 'cancelled';
@@ -591,28 +671,7 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
   }
 
   // Only ONE request reaches here — safe to attempt refund
-  if (updated.paymentStatus === 'completed' && updated.paymentDetails?.rzpPaymentId) {
-    try {
-      const rzp = getRazorpayInstance();
-      const refund = await rzp.payments.refund(updated.paymentDetails.rzpPaymentId, {
-        amount: updated.totalAmount * 100,
-        notes: { reason: cancellationReason },
-      });
-      await Booking.findByIdAndUpdate(bookingId, {
-        $set: {
-          paymentStatus: 'refunded',
-          'paymentDetails.refundAmount': updated.totalAmount,
-          'paymentDetails.refundReason': cancellationReason,
-          'paymentDetails.refundDate': new Date(),
-        },
-      });
-      updated.paymentStatus = 'refunded';
-      console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
-    } catch (refundErr) {
-      // Log for support team — do not block the cancellation
-      console.error(`[Refund] FAILED for booking ${bookingId}:`, refundErr.message);
-    }
-  }
+  await issueRefundIfPaid(bookingId, updated, cancellationReason);
 
   await pushService.notifyPriestBookingCancelled(
     updated.priestId._id || updated.priestId,

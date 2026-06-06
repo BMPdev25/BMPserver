@@ -35,12 +35,15 @@ exports.firebaseSync = async (req, res) => {
     // Fallback: link existing account to Firebase UID if phone/email matches.
     // Only allowed when the account has no Firebase UID yet — prevents account takeover.
     if (!user && (phone_number || email)) {
-      user = await User.findOne({
-        $or: [
-          { phone: phone_number },
-          { email: email },
-        ].filter(Boolean),
-      });
+      // Build $or clauses only for fields that are actually present. A clause like
+      // { phone: undefined } is NOT dropped by filter(Boolean) (it's a truthy object)
+      // and Mongoose treats it as { phone: null }, which would match any phoneless
+      // account and cause false 409s / wrong-account linking.
+      const orClauses = [];
+      if (phone_number) orClauses.push({ phone: phone_number });
+      if (email) orClauses.push({ email });
+
+      user = orClauses.length ? await User.findOne({ $or: orClauses }) : null;
 
       if (user) {
         if (user.firebaseUid && user.firebaseUid !== uid) {
@@ -70,7 +73,9 @@ exports.firebaseSync = async (req, res) => {
        user = new User({
          name: name || decodedToken.name || 'New User',
          email: email || undefined,
-         phone: phone_number || null,
+         // Use undefined (not null) so the unique+sparse index skips phoneless
+         // (e.g. Google/email) signups — null would be indexed and collide.
+         phone: phone_number || undefined,
          firebaseUid: uid,
          userType: userType,
          expoPushToken: pushToken || null,
@@ -235,7 +240,7 @@ exports.sendOtp = async (req, res) => {
 // Verify OTP → return Firebase custom token
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phone, otp, userType: rawUserType } = req.body;
+    const { phone, otp, userType: rawUserType, name, languagesSpoken, experience, description } = req.body;
     const ALLOWED_USER_TYPES = ['devotee', 'priest'];
 
     if (rawUserType && !ALLOWED_USER_TYPES.includes(rawUserType)) {
@@ -293,12 +298,21 @@ exports.verifyOtp = async (req, res) => {
       if (!userType) {
         return res.status(400).json({ message: 'userType is required for new registration. Must be "devotee" or "priest".' });
       }
+      // Mirror firebaseSync: priests must select at least one language at registration
+      if (userType === 'priest' && (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)) {
+        return res.status(400).json({ message: 'Priests must select at least one language.' });
+      }
       const type = userType;
       user = new User({
-        name: 'New User',
+        name: name || 'New User',
         phone: e164,
         userType: type,
+        ...(type === 'priest' && languagesSpoken ? { languagesSpoken } : {}),
       });
+      // Set firebaseUid before the first save: the schema requires `password`
+      // unless firebaseUid is present, and OTP users have no password. _id is
+      // assigned at instantiation, so it is safe to use here.
+      user.firebaseUid = user._id.toString();
       await user.save();
 
       // Create associated profile
@@ -311,6 +325,10 @@ exports.verifyOtp = async (req, res) => {
           userId: user._id,
           isVerified: false,
           verificationStatus: 'incomplete',
+          experience: experience || 0,
+          description: description || '',
+          // Denormalize languages so the priest is searchable immediately
+          languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
         });
       }
     }

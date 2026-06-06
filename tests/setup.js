@@ -1,3 +1,9 @@
+// Enable the OTP auth routes in tests. They are gated behind OTP_ENABLED at
+// require-time in routes/authRoutes.js (disabled by default until MSG91 is
+// configured); without this, /send-otp and /verify-otp 404 in the test env.
+// Must be set before server.js is required by any test file.
+process.env.OTP_ENABLED = 'true'
+
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 

@@ -163,8 +163,8 @@ const userSchema = new mongoose.Schema({
 
 
 // Indexes for performance
-userSchema.index({ email: 1 });
-userSchema.index({ phone: 1 });
+// NOTE: email and phone are already indexed via field-level `unique: true, sparse: true`.
+// Re-declaring them here causes an IndexKeySpecsConflict (same name, different options).
 userSchema.index({ userType: 1 });
 userSchema.index({ 'security.refreshTokens.token': 1 });
 userSchema.index({ createdAt: -1 });
