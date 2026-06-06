@@ -75,19 +75,15 @@ app.set('io', io);
 app.set('userSockets', userSockets);
 
 // Security and performance middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Disable CSP for development
-  })
-);
+app.use(helmet());
 app.use(compression());
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(
   cors({
-    origin: '*',
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true,
   })
 );
@@ -135,6 +131,19 @@ if (require.main === module) {
     console.log(`Server running on 0.0.0.0:${PORT}`);
     console.log('Socket.IO enabled for real-time features');
   });
+
+  const shutdown = (signal) => {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = { app, server };

@@ -30,10 +30,7 @@ const updateProfile = async (userId, updateData) => {
 
 const getProfile = async (userId) => {
   let profile = await PriestProfile.findOne({ userId })
-    .populate({
-      path: 'userId',
-      populate: { path: 'languagesSpoken' },
-    })
+    .populate('userId')
     .populate('services.ceremonyId', 'name duration images description requirements');
 
   if (!profile) {
@@ -47,10 +44,7 @@ const getProfile = async (userId) => {
     });
     await profile.save();
     profile = await PriestProfile.findOne({ userId })
-      .populate({
-        path: 'userId',
-        populate: { path: 'languagesSpoken' },
-      })
+      .populate('userId')
       .populate('services.ceremonyId', 'name duration images description requirements');
   }
 
@@ -256,7 +250,8 @@ const getProfileCompletion = async (userId) => {
   const user = profile.userId;
 
   const fields = [
-    { name: 'basicInfo', check: () => user && user.name && user.email },
+    // email is optional (phone/OTP signups have no email), so accept either contact method
+    { name: 'basicInfo', check: () => user && user.name && (user.email || user.phone) },
     { name: 'languages', check: () => user && user.languagesSpoken && user.languagesSpoken.length > 0 },
     { name: 'description', check: () => profile.description && profile.description.length > 0 },
     { name: 'experience', check: () => profile.experience !== undefined && profile.experience !== null },

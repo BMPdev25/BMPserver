@@ -2,7 +2,7 @@
 const express = require('express');
 const priestController = require('../controllers/priestController');
 const bookingController = require('../controllers/bookingController');
-const { protect, priestOnly } = require('../middleware/authMiddleware');
+const { protect, priestOnly, verifiedPriestOnly } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
 const { updatePriestProfileRules } = require('../validators/profileValidators');
 
@@ -13,43 +13,39 @@ router.get('/available', priestController.getAvailablePujaris);
 router.get('/public/:priestProfileId', priestController.getPublicProfile);
 router.get('/public/:priestProfileId/reviews', priestController.getPublicReviews);
 
-// All following routes need authentication and priest role
+// All priest routes require authentication
 router.use(protect);
 router.use(priestOnly);
 
-// Profile routes
+// Onboarding routes — accessible to all priests regardless of verification status
 router.put('/profile', updatePriestProfileRules, validate, priestController.updateProfile);
 router.get('/profile', priestController.getProfile);
 router.get('/profile-completion', priestController.getProfileCompletion);
 router.put('/status', priestController.toggleStatus);
+router.post('/submit-verification', priestController.submitVerification);
 
-// Booking routes
-router.get('/bookings', priestController.getBookings);
-router.get('/bookings/pending-actions', priestController.getPendingActions);
-router.post('/bookings/instant/accept', priestController.acceptInstantBooking);
-router.get('/bookings/:bookingId', bookingController.getBookingDetails);
-router.put('/bookings/:bookingId/status', priestController.updateBookingStatus);
-
-// Earnings routes
-router.get('/earnings', priestController.getEarnings);
-router.post('/earnings/withdraw', priestController.requestWithdrawal);
-
-// Transaction routes
-router.get('/transactions', priestController.getTransactions);
-
-// Notification routes
-router.get('/notifications', priestController.getNotifications);
-router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
-router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
-
-// Document upload route
 const multer = require('multer');
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 router.post('/documents', upload.single('document'), priestController.uploadDocument);
-router.post('/submit-verification', priestController.submitVerification);
 router.get('/documents/:documentType', priestController.getDocument);
+
+// Operational routes — require admin verification
+router.get('/bookings', verifiedPriestOnly, priestController.getBookings);
+router.get('/bookings/pending-actions', verifiedPriestOnly, priestController.getPendingActions);
+router.post('/bookings/instant/accept', verifiedPriestOnly, priestController.acceptInstantBooking);
+router.get('/bookings/:bookingId', verifiedPriestOnly, bookingController.getBookingDetails);
+router.put('/bookings/:bookingId/status', verifiedPriestOnly, priestController.updateBookingStatus);
+
+router.get('/earnings', verifiedPriestOnly, priestController.getEarnings);
+router.post('/earnings/withdraw', verifiedPriestOnly, priestController.requestWithdrawal);
+router.get('/transactions', verifiedPriestOnly, priestController.getTransactions);
+
+// Notifications available to all priests
+router.get('/notifications', priestController.getNotifications);
+router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
+router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
 
 module.exports = router;

@@ -101,13 +101,13 @@ const userSchema = new mongoose.Schema({
       },
     },
   ],
-  // Languages spoken (for priests)
-  languagesSpoken: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Language',
-    },
-  ],
+  // Languages spoken (for priests) — stored as plain name strings (e.g. 'Telugu').
+  // NOTE: not ObjectId refs to the Language collection; the whole stack (seed,
+  // search filter, signup) uses name strings.
+  languagesSpoken: {
+    type: [String],
+    default: [],
+  },
   // Rating Statistics (Cached for performance)
   rating: {
     average: {

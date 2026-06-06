@@ -450,6 +450,7 @@ async function createPriest(data, ceremonyMap) {
     description: data.bio,
     experience: data.experience,
     religiousTradition: data.tradition,
+    languagesSpoken: data.languages || [],
     isVerified: true,
     verificationStatus: 'approved',
     onboardingCompleted: true,
@@ -471,13 +472,13 @@ async function createPriest(data, ceremonyMap) {
     services: validServices,
     availability: {
       weeklySchedule: new Map([
-        ['monday', ['06:00', '20:00']],
-        ['tuesday', ['06:00', '20:00']],
-        ['wednesday', ['06:00', '20:00']],
-        ['thursday', ['06:00', '20:00']],
-        ['friday', ['06:00', '20:00']],
-        ['saturday', ['06:00', '20:00']],
-        ['sunday', ['07:00', '17:00']],
+        ['monday', ['06:00-20:00']],
+        ['tuesday', ['06:00-20:00']],
+        ['wednesday', ['06:00-20:00']],
+        ['thursday', ['06:00-20:00']],
+        ['friday', ['06:00-20:00']],
+        ['saturday', ['06:00-20:00']],
+        ['sunday', ['07:00-17:00']],
       ]),
       dateOverrides: [],
     },
@@ -529,7 +530,7 @@ async function createDevotee() {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  await mongoose.connect(process.env.MONGO_URI)
+  await mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' })
   console.log('Connected to MongoDB\n')
 
   await clearFirebaseUsers()

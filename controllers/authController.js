@@ -25,7 +25,9 @@ exports.firebaseSync = async (req, res) => {
     const { uid, email, phone_number } = decodedToken;
 
     // Fields passed during first registration (can be empty on subsequent logins)
-    const { userType, name, phone, pushToken, languagesSpoken, experience, description } = req.body;
+    const { userType: rawUserType, name, pushToken, languagesSpoken, experience, description } = req.body;
+    const ALLOWED_USER_TYPES = ['devotee', 'priest'];
+    const userType = ALLOWED_USER_TYPES.includes(rawUserType) ? rawUserType : null;
 
     // Find the user directly by Firebase UID
     let user = await User.findOne({ firebaseUid: uid });
@@ -62,10 +64,13 @@ exports.firebaseSync = async (req, res) => {
        if (!userType) {
          return res.status(404).json({ message: 'No account found. Please register to continue.' });
        }
+       if (userType === 'priest' && (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)) {
+         return res.status(400).json({ message: 'Priests must select at least one language.' });
+       }
        user = new User({
          name: name || decodedToken.name || 'New User',
          email: email || undefined,
-         phone: phone_number || phone || null,
+         phone: phone_number || null,
          firebaseUid: uid,
          userType: userType,
          expoPushToken: pushToken || null,
@@ -81,7 +86,9 @@ exports.firebaseSync = async (req, res) => {
               isVerified: false,
               verificationStatus: 'incomplete',
               experience: experience || 0,
-              description: description || ''
+              description: description || '',
+              // Denormalize languages so the priest is searchable immediately
+              languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
           });
        } else if (userType === 'devotee') {
           const DevoteeProfile = require('../models/devoteeProfile');
@@ -202,19 +209,23 @@ exports.sendOtp = async (req, res) => {
           message: `Please wait ${Math.ceil(60 - secondsSince)} seconds before requesting another OTP.`,
         });
       }
-      await OtpRecord.deleteOne({ phone: e164 });
     }
 
     const otp = generateOtp();
-    await OtpRecord.create({ phone: e164, otp, attempts: 0 });
 
+    // Send SMS before writing to DB — if SMS fails the old record is untouched and
+    // the user can retry immediately without hitting the 60-second rate-limit.
     const smsService = require('../services/smsService');
     await smsService.sendOtp(e164, otp);
 
-    res.status(200).json({
-      message: `OTP sent to ${e164}`,
-      ...(process.env.NODE_ENV === 'development' && { devOtp: otp }),
-    });
+    // SMS succeeded — swap the record atomically
+    if (recent) await OtpRecord.deleteOne({ phone: e164 });
+    await OtpRecord.create({ phone: e164, otp, attempts: 0 });
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[DEV] OTP for ${e164}: ${otp}`);
+    }
+    res.status(200).json({ message: `OTP sent to ${e164}` });
   } catch (error) {
     console.error('Send OTP error:', error);
     res.status(500).json({ message: 'Failed to send OTP. Please try again.' });
@@ -224,7 +235,13 @@ exports.sendOtp = async (req, res) => {
 // Verify OTP → return Firebase custom token
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phone, otp, userType } = req.body;
+    const { phone, otp, userType: rawUserType } = req.body;
+    const ALLOWED_USER_TYPES = ['devotee', 'priest'];
+
+    if (rawUserType && !ALLOWED_USER_TYPES.includes(rawUserType)) {
+      return res.status(400).json({ message: 'Invalid userType. Must be "devotee" or "priest".' });
+    }
+    const userType = rawUserType || null;
 
     if (!phone || !otp) {
       return res.status(400).json({ message: 'Phone number and OTP are required.' });
@@ -247,15 +264,20 @@ exports.verifyOtp = async (req, res) => {
     }
 
     if (record.otp !== otp.trim()) {
-      record.attempts += 1;
-      await record.save();
+      // Atomic increment — prevents race condition where parallel wrong guesses
+      // each read the same attempt count and advance it by only 1.
+      const updated = await OtpRecord.findOneAndUpdate(
+        { phone: e164, _id: record._id },
+        { $inc: { attempts: 1 } },
+        { new: true }
+      );
 
-      if (record.attempts >= MAX_ATTEMPTS) {
+      if (!updated || updated.attempts >= MAX_ATTEMPTS) {
         await OtpRecord.deleteOne({ phone: e164 });
         return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new OTP.' });
       }
 
-      const remaining = MAX_ATTEMPTS - record.attempts;
+      const remaining = MAX_ATTEMPTS - updated.attempts;
       return res.status(400).json({
         message: `Incorrect OTP. ${remaining} attempt(s) remaining.`,
       });
@@ -268,7 +290,10 @@ exports.verifyOtp = async (req, res) => {
     let user = await User.findOne({ phone: e164 });
 
     if (!user) {
-      const type = userType || 'devotee';
+      if (!userType) {
+        return res.status(400).json({ message: 'userType is required for new registration. Must be "devotee" or "priest".' });
+      }
+      const type = userType;
       user = new User({
         name: 'New User',
         phone: e164,
@@ -290,18 +315,19 @@ exports.verifyOtp = async (req, res) => {
       }
     }
 
-    // Create a Firebase custom token so the frontend can sign in via Firebase SDK.
-    // Use user._id as the Firebase uid so protect() can find the user by firebaseUid.
-    const customToken = await admin.auth().createCustomToken(user._id.toString(), {
-      phone: e164,
-      userType: user.userType,
-    });
-
-    // Store the Firebase uid on the user record so protect() can resolve it
+    // Persist firebaseUid BEFORE minting the token so the user is never orphaned if
+    // createCustomToken throws. Use the existing firebaseUid (e.g. from Google sign-in)
+    // when available so protect() can still resolve the user via its stored lookup key.
     if (!user.firebaseUid) {
       user.firebaseUid = user._id.toString();
       await user.save();
     }
+    const tokenUid = user.firebaseUid;
+
+    const customToken = await admin.auth().createCustomToken(tokenUid, {
+      phone: e164,
+      userType: user.userType,
+    });
 
     res.status(200).json({
       customToken,

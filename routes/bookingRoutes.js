@@ -13,7 +13,7 @@ const {
   getPaymentDetails,
 } = require('../controllers/bookingController');
 // const { bookInstantCeremony } = require('../controllers/devoteeController'); // Missing implementation
-const { protect, priestOnly } = require('../middleware/authMiddleware');
+const { protect, verifiedPriestOnly } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
 const { createBookingRules, verifyPaymentRules, cancelBookingRules } = require('../validators/bookingValidators');
 const rateLimit = require('express-rate-limit');
@@ -52,9 +52,9 @@ router.post('/', bookingCreationLimit, createBookingRules, validate, createBooki
 // router.post('/instant', bookingCreationLimit, bookInstantCeremony); // Missing implementation
 
 // Booking status management
-router.put('/:bookingId/status', priestOnly, updateBookingStatus);
+router.put('/:bookingId/status', verifiedPriestOnly, updateBookingStatus);
 router.put('/:bookingId/cancel-devotee', cancelBookingRules, validate, cancelBookingByDevotee);
-router.post('/:bookingId/complete', markAsCompleted);
+router.post('/:bookingId/complete', verifiedPriestOnly, markAsCompleted);
 
 // Payment routes
 router.post('/payment/order', paymentLimit, createPaymentOrder);

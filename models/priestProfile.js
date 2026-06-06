@@ -141,6 +141,9 @@ const priestProfileSchema = new mongoose.Schema({
     of: Number,
   },
 
+  // Denormalized from User.languagesSpoken for search filtering
+  languagesSpoken: { type: [String], default: [] },
+
   ceremonyCount: { type: Number, default: 0 },
   cancelledCount: { type: Number, default: 0 },
   noShowCount: { type: Number, default: 0 },

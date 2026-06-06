@@ -48,6 +48,10 @@ exports.createBooking = async (req, res, next) => {
     const devoteeId = req.user.id;
     const booking = await bookingService.createBooking(devoteeId, req.body);
 
+    // Snapshot before any further population so the HTTP response is stable
+    // regardless of whether the priest has an active socket connection.
+    const responseData = booking.toObject();
+
     const io = req.app.get('io');
     const userSockets = req.app.get('userSockets');
     const priestSocketId = userSockets.get(booking.priestId._id?.toString() ?? booking.priestId.toString());
@@ -59,7 +63,7 @@ exports.createBooking = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
-      data: booking,
+      data: responseData,
     });
   } catch (error) {
     next(error);

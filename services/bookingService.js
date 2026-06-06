@@ -400,20 +400,11 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   }
 
   if (status === 'cancelled') {
-    const callerIsPriest =
-      booking.priestId.toString() === userId ||
-      booking.priestId._id?.toString() === userId
-    if (callerIsPriest) {
-      await pushService.notifyDevoteeCancelledByPriest(
-        booking.devoteeId._id || booking.devoteeId,
-        booking
-      )
-    } else {
-      await pushService.notifyPriestBookingCancelled(
-        booking.priestId._id || booking.priestId,
-        booking
-      )
-    }
+    // This endpoint is priestOnly — the priest is always the caller here
+    await pushService.notifyDevoteeCancelledByPriest(
+      booking.devoteeId._id || booking.devoteeId,
+      booking
+    )
   }
 
   if (status === 'rejected') {

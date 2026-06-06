@@ -10,9 +10,19 @@ const { getPresignedUrl } = require('../services/storageService');
 exports.updateProfile = async (req, res, next) => {
   try {
     const profile = await priestService.updateProfile(req.user.id, req.body);
+
+    // Keep User document in sync for fields that live on both models
+    const userUpdates = {};
     if (req.body.name && req.body.name.trim() !== '') {
-      await User.findByIdAndUpdate(req.user.id, { name: req.body.name.trim() });
+      userUpdates.name = req.body.name.trim();
     }
+    if (Array.isArray(req.body.languagesSpoken)) {
+      userUpdates.languagesSpoken = req.body.languagesSpoken;
+    }
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(req.user.id, userUpdates);
+    }
+
     res.status(200).json(profile);
   } catch (error) {
     next(error);
@@ -340,10 +350,18 @@ exports.getPendingActions = async (req, res, next) => {
 };
 
 // Upload document
+const ALLOWED_DOCUMENT_TYPES = ['profile_picture', 'government_id', 'religious_certificate', 'other'];
+
 exports.uploadDocument = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const result = await priestService.uploadDocument(req.user.id, req.file, req.body.documentType);
+    const { documentType } = req.body;
+    if (!documentType || !ALLOWED_DOCUMENT_TYPES.includes(documentType)) {
+      return res.status(400).json({
+        message: `Invalid documentType. Must be one of: ${ALLOWED_DOCUMENT_TYPES.join(', ')}`,
+      });
+    }
+    const result = await priestService.uploadDocument(req.user.id, req.file, documentType);
     res.status(200).json(result);
   } catch (error) {
     next(error);

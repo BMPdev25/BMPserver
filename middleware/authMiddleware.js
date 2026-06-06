@@ -4,15 +4,16 @@ const User = require('../models/user');
 
 // Protect routes - verify Firebase ID token
 exports.protect = async (req, res, next) => {
-  // Test bypass — only active when NODE_ENV=test and the custom header is present
+  // Test-only bypass: fetches the real user from DB so role cannot be forged via headers.
   if (process.env.NODE_ENV === 'test' && req.headers['x-test-user-id']) {
-    const testId = req.headers['x-test-user-id'];
-    req.user = {
-      id: testId,
-      _id: testId,
-      userType: req.headers['x-test-user-type'] || 'devotee',
-    };
-    return next();
+    try {
+      const user = await User.findById(req.headers['x-test-user-id']).select('-password');
+      if (!user) return res.status(401).json({ message: 'Test user not found' });
+      req.user = user;
+      return next();
+    } catch (e) {
+      return res.status(401).json({ message: 'Invalid test user ID' });
+    }
   }
 
   try {
@@ -61,14 +62,29 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-// Middleware to restrict access to priest only
+// Middleware to restrict access to priests (any verification status).
+// Use this for onboarding routes (profile setup, document upload, submit-verification).
 exports.priestOnly = (req, res, next) => {
   if (req.user && req.user.userType === 'priest') {
+    return next();
+  }
+  res.status(403).json({ message: 'Access denied, priest role required' });
+};
+
+// Middleware for priest routes that require admin verification (bookings, earnings, payouts).
+exports.verifiedPriestOnly = async (req, res, next) => {
+  if (!req.user || req.user.userType !== 'priest') {
+    return res.status(403).json({ message: 'Access denied, priest role required' });
+  }
+  try {
+    const PriestProfile = require('../models/priestProfile');
+    const profile = await PriestProfile.findOne({ userId: req.user._id }).select('isVerified').lean();
+    if (!profile || !profile.isVerified) {
+      return res.status(403).json({ message: 'Priest account is pending admin verification' });
+    }
     next();
-  } else {
-    res.status(403).json({
-      message: 'Access denied, priest role required',
-    });
+  } catch (err) {
+    next(err);
   }
 };
 

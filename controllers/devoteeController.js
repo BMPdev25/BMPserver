@@ -29,7 +29,7 @@ exports.getAllPriests = async (req, res, next) => {
           average: priest.ratings?.average ?? 0,
           count: priest.ratings?.count ?? 0,
         },
-        languages: priest.userId?.languagesSpoken?.map((l) => l.name) || [],
+        languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
       })),
     });
   } catch (error) {
@@ -135,7 +135,6 @@ exports.searchPriests = async (req, res, next) => {
       .populate({
         path: "userId",
         select: "name profilePicture languagesSpoken",
-        populate: { path: "languagesSpoken", select: "name" }
       })
       .populate("services.ceremonyId", "name category duration")
       .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate")
@@ -206,7 +205,7 @@ exports.getPriestDetails = async (req, res, next) => {
       profilePicture: priest.profilePicture || '',
       rating: priest.ratings || { average: 4.5, count: 50 },
       availability: priest.currentAvailability?.status || 'available',
-      languages: priest.userId?.languagesSpoken?.map((l) => l.name) || [],
+      languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
       certifications: priest.specializations?.map((s) => s.certification).filter(Boolean) || [],
       ceremonyCount: priest.ceremonyCount || 0,
       completionRate: priest.analytics?.completionRate ?? 100,

@@ -12,7 +12,6 @@ const getAllPriests = async () => {
     .populate({
       path: 'userId',
       select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
     })
     .lean()
     .exec();
@@ -56,7 +55,6 @@ const searchPriests = async (query) => {
     .populate({
       path: 'userId',
       select: 'name profilePicture languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
     })
     .populate('services.ceremonyId', 'name category duration')
     .sort({ 'ratings.average': -1 })
@@ -81,7 +79,6 @@ const getPriestDetails = async (priestId) => {
     .populate({
       path: 'userId',
       select: 'name profilePicture languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
     })
     .populate('services.ceremonyId', 'name category duration ritualSteps')
     .lean()
@@ -93,7 +90,6 @@ const getPriestDetails = async (priestId) => {
       .populate({
         path: 'userId',
         select: 'name profilePicture languagesSpoken',
-        populate: { path: 'languagesSpoken', select: 'name' },
       })
       .populate('services.ceremonyId', 'name category duration ritualSteps')
       .lean()

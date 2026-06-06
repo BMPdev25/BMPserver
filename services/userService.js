@@ -6,8 +6,7 @@ const { priestProfilePicKey, devoteeProfilePicKey, keyFromPublicUrl } = require(
 
 const getProfile = async (userId) => {
   const user = await User.findById(userId)
-    .select('-password -__v -security.refreshTokens')
-    .populate('languagesSpoken');
+    .select('-password -__v -security.refreshTokens');
 
   if (!user) {
     const error = new Error('User not found');
@@ -23,8 +22,7 @@ const updateProfile = async (userId, updateData) => {
     new: true,
     runValidators: true,
   })
-    .select('-password -__v -security.refreshTokens')
-    .populate('languagesSpoken');
+    .select('-password -__v -security.refreshTokens');
 
   if (!user) {
     const error = new Error('User not found');
