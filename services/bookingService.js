@@ -94,6 +94,15 @@ const timesOverlap = (startA, endA, startB, endB) => {
   return aStart < bEnd && bStart < aEnd;
 };
 
+// The platform operates on India Standard Time (UTC+5:30). Booking dates are
+// stored as midnight-UTC of the intended IST calendar day, so any "which day is
+// it" comparison must be done in IST — comparing raw UTC dates wrongly treats
+// the IST early-morning hours (when UTC is still the previous day) as a
+// different day, e.g. blocking a priest from marking arrival for a dawn puja.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const istDateStr = (d) =>
+  new Date(new Date(d).getTime() + IST_OFFSET_MS).toISOString().split('T')[0];
+
 const categorizeBooking = (booking) => {
   const now = new Date();
   const bookingDate = new Date(booking.date);
@@ -134,7 +143,9 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
 
     if (category === 'today') {
       query.date = { $gte: todayStart, $lte: todayEnd };
-      if (!query.status) query.status = { $in: ['confirmed', 'arrived', 'in_progress'] };
+      // Include 'pending' so a request scheduled for today is visible in the
+      // priest's "today" view — that's exactly the slot they still need to act on.
+      if (!query.status) query.status = { $in: ['pending', 'confirmed', 'arrived', 'in_progress'] };
     } else if (category === 'upcoming') {
       query.date = { $gt: todayEnd };
       if (!query.status) query.status = { $in: ['pending', 'confirmed'] };
@@ -367,7 +378,8 @@ const createBooking = async (devoteeId, bookingData) => {
 const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   const VALID_TRANSITIONS = {
     pending: ['confirmed', 'cancelled', 'rejected'],
-    requested: ['confirmed', 'cancelled', 'rejected'],
+    // Note: 'requested' is not produced anywhere — bookings start at 'pending'
+    // (or 'searching' for instant). Left out of the transition map intentionally.
     confirmed: ['arrived', 'completed', 'cancelled'],
     arrived: ['in_progress', 'cancelled'],
     in_progress: ['completed', 'cancelled'],
@@ -431,11 +443,11 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   }
 
   if (['arrived', 'in_progress'].includes(status)) {
-    const now = new Date();
-    const bookingDate = new Date(booking.date);
+    // Compare in IST so a dawn ceremony can be actioned from IST midnight onward,
+    // not blocked until UTC catches up to the same calendar day.
     if (
       process.env.NODE_ENV !== 'test' &&
-      now.toISOString().split('T')[0] < bookingDate.toISOString().split('T')[0]
+      istDateStr(new Date()) < istDateStr(booking.date)
     ) {
       const error = new Error(
         'Operation can only be performed on the scheduled day of the booking'
@@ -618,6 +630,112 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   return booking;
 };
 
+/**
+ * A priest claims an instant booking that is broadcast to multiple priests.
+ * Such bookings live in the 'searching' state with NO priestId assigned until
+ * the first priest accepts. This is a distinct flow from updateBookingStatus,
+ * which assumes the priest is already assigned to the booking.
+ *
+ * The claim is atomic: the findOneAndUpdate filters on status:'searching', so
+ * only the first concurrent request transitions it to 'confirmed' — any later
+ * request finds it no longer 'searching' and is rejected.
+ */
+const acceptInstantBooking = async (bookingId, priestId) => {
+  if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+    const error = new Error('Invalid booking ID format');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    const error = new Error('Booking not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (booking.status !== 'searching') {
+    const error = new Error(
+      `This booking is no longer awaiting a priest (current status: '${booking.status}').`
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // The claiming priest must exist and be verified
+  const priest = await User.findById(priestId);
+  if (!priest || priest.userType !== 'priest') {
+    const error = new Error('Priest not found');
+    error.statusCode = 403;
+    throw error;
+  }
+  const priestProfile = await PriestProfile.findOne({ userId: priestId });
+  if (priestProfile && !priestProfile.isVerified) {
+    const error = new Error('Only verified priests can accept bookings.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Reject the claim if the priest already has an overlapping active booking
+  const bookingDay = new Date(booking.date);
+  const startOfDay = new Date(bookingDay);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  const endOfDay = new Date(bookingDay);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
+  const sameDayBookings = await Booking.find({
+    priestId,
+    date: { $gte: startOfDay, $lte: endOfDay },
+    status: { $in: ['confirmed', 'arrived', 'in_progress'] },
+  }).select('startTime endTime');
+
+  const overlaps = sameDayBookings.some((other) =>
+    timesOverlap(booking.startTime, booking.endTime, other.startTime, other.endTime)
+  );
+  if (overlaps) {
+    const error = new Error(
+      'You already have a confirmed booking that overlaps this time.'
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Atomic first-come claim: only the request that still sees 'searching' wins.
+  const claimed = await Booking.findOneAndUpdate(
+    { _id: bookingId, status: 'searching' },
+    {
+      $set: { priestId, status: 'confirmed' },
+      $push: {
+        statusHistory: {
+          status: 'confirmed',
+          timestamp: new Date(),
+          updatedBy: priestId,
+          reason: 'Instant booking accepted by priest',
+        },
+      },
+    },
+    { new: true }
+  );
+
+  if (!claimed) {
+    const error = new Error('This booking has just been accepted by another priest.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  await pushService.notifyDevoteeBookingConfirmed(
+    claimed.devoteeId._id || claimed.devoteeId,
+    claimed
+  );
+
+  await claimed.populate([
+    { path: 'devoteeId', select: 'name phone email' },
+    { path: 'priestId', select: 'name phone email' },
+  ]);
+
+  return claimed;
+};
+
 const cancelBookingByDevotee = async (bookingId, userId, reason) => {
   const cancellationReason = reason || 'Cancelled by devotee';
 
@@ -795,6 +913,7 @@ module.exports = {
   getBookingDetails,
   createBooking,
   updateBookingStatus,
+  acceptInstantBooking,
   cancelBookingByDevotee,
   createPaymentOrder,
   verifyPayment,

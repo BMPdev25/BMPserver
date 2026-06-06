@@ -130,13 +130,13 @@ describe('Complete Priest Lifecycle', () => {
     expect(res.status).toBe(403)
   })
 
-  it('8. status=rejected is rejected by booking status endpoint', async () => {
+  it('8. invalid transition (pending → in_progress) is rejected by booking status endpoint', async () => {
     const booking = await createTestBooking(devotee._id, priestUser._id, { status: 'pending' })
 
     const res = await request(app)
       .put(`/api/priest/bookings/${booking._id}/status`)
       .set(authAs(priestUser, 'priest'))
-      .send({ status: 'rejected' })
+      .send({ status: 'in_progress' })
 
     expect(res.status).toBe(400)
   })

@@ -1,6 +1,7 @@
 // controllers/priestController.js
 const priestService = require('../services/priestService');
 const bookingService = require('../services/bookingService');
+const walletController = require('./walletController');
 const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
@@ -111,17 +112,10 @@ exports.getEarnings = async (req, res, next) => {
   }
 };
 
-// Request withdrawal (redirects to service logic)
-exports.requestWithdrawal = async (req, res, next) => {
-  try {
-    const { amount, paymentMethod } = req.body;
-    // For now, keep the withdrawal simple or redirect to wallet service if needed.
-    // Assuming simple logic from service if created.
-    res.status(200).json({ message: 'Withdrawal logic moved to wallet service.' });
-  } catch (error) {
-    next(error);
-  }
-};
+// Request withdrawal — delegates to the real wallet payout implementation so
+// /api/priest/earnings/withdraw and /api/wallet/withdraw share one code path
+// (balance checks, pending transaction, bank transfer, refund-on-failure).
+exports.requestWithdrawal = (req, res, next) => walletController.requestWithdrawal(req, res, next);
 
 // Get transactions history
 exports.getTransactions = async (req, res, next) => {
@@ -424,19 +418,15 @@ exports.getDocument = async (req, res, next) => {
   }
 };
 
-// Mock acceptInstantBooking
+// Accept an instant booking (priest claims a 'searching' broadcast request)
 exports.acceptInstantBooking = async (req, res, next) => {
   try {
     const { bookingId } = req.body;
-    const mongoose = require('mongoose');
-
-    if (!bookingId || !mongoose.Types.ObjectId.isValid(bookingId)) {
+    if (!bookingId) {
       return res.status(400).json({ success: false, message: 'Valid booking ID is required' });
     }
 
-    const booking = await bookingService.updateBookingStatus(bookingId, req.user.id, {
-      status: 'confirmed',
-    });
+    const booking = await bookingService.acceptInstantBooking(bookingId, req.user.id);
     res.status(200).json({ message: 'Instant booking accepted', booking });
   } catch (error) {
     next(error);

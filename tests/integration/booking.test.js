@@ -120,13 +120,13 @@ describe('Booking & Wallet Integration Tests', () => {
     expect(cancelRes.status).toBe(403)
   })
 
-  test('Validation: Reject status=rejected (invalid transition)', async () => {
+  test('Validation: Reject invalid transition (pending → in_progress)', async () => {
     const booking = await createTestBooking(devotee._id, priestUser._id, { status: 'pending' })
 
     const res = await request(app)
       .put(`/api/priest/bookings/${booking._id}/status`)
       .set(authAs(priestUser, 'priest'))
-      .send({ status: 'rejected' })
+      .send({ status: 'in_progress' })
 
     expect(res.status).toBe(400)
   })

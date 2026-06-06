@@ -100,6 +100,7 @@ const bookingSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
+    maxlength: [1000, 'Notes cannot exceed 1000 characters'],
   },
   updatedAt: {
     type: Date,

@@ -132,29 +132,56 @@ const schedulePushReminders = () => {
   })
 }
 
-// Every 15 minutes — cancel bookings whose payment window expired before payment was completed
+// Every 15 minutes — cancel bookings whose payment window expired before payment
+// was completed. Covers both 'pending' requests AND 'confirmed' bookings that a
+// priest accepted before payment: without the 'confirmed' case those would sit
+// unpaid forever (they can never be completed, which requires a paid status).
+const runExpiredPaymentCleanup = async () => {
+  const expired = await Booking.find({
+    status: { $in: ['pending', 'confirmed'] },
+    paymentStatus: { $ne: 'completed' },
+    paymentExpiresAt: { $lt: new Date() },
+  });
+  for (const b of expired) {
+    b.status = 'cancelled';
+    b.cancellationReason = 'Payment not completed within time limit';
+    b.cancellationDate = new Date();
+    b.statusHistory.push({
+      status: 'cancelled',
+      timestamp: new Date(),
+      reason: 'Payment not completed within time limit',
+    });
+    await b.save();
+
+    // Let the devotee know their unpaid booking was released, and free the
+    // priest's slot by notifying them too (only relevant once a priest is set).
+    await sendReminder(
+      b.devoteeId,
+      b._id,
+      'Booking Cancelled — Payment Not Completed',
+      `Your ${b.ceremonyType} booking was cancelled because payment was not completed in time.`,
+      'devotee'
+    );
+    if (b.priestId) {
+      await sendReminder(
+        b.priestId,
+        b._id,
+        'Booking Released — Payment Not Completed',
+        `The ${b.ceremonyType} booking was cancelled because the devotee did not complete payment in time.`,
+        'priest'
+      );
+    }
+  }
+  if (expired.length > 0) {
+    console.log(`[Cron] Cancelled ${expired.length} expired unpaid bookings`);
+  }
+  return expired.length;
+};
+
 const scheduleExpiredPaymentCleanup = () => {
   cron.schedule('*/15 * * * *', async () => {
     try {
-      const expired = await Booking.find({
-        status: 'pending',
-        paymentStatus: { $ne: 'completed' },
-        paymentExpiresAt: { $lt: new Date() },
-      });
-      for (const b of expired) {
-        b.status = 'cancelled';
-        b.cancellationReason = 'Payment not completed within time limit';
-        b.cancellationDate = new Date();
-        b.statusHistory.push({
-          status: 'cancelled',
-          timestamp: new Date(),
-          reason: 'Payment not completed within time limit',
-        });
-        await b.save();
-      }
-      if (expired.length > 0) {
-        console.log(`[Cron] Cancelled ${expired.length} expired unpaid bookings`);
-      }
+      await runExpiredPaymentCleanup();
     } catch (err) {
       console.error('[Cron] Expired payment cleanup failed:', err.message);
     }
@@ -184,4 +211,5 @@ module.exports = {
   schedulePushReminders,
   scheduleExpiredPaymentCleanup,
   scheduleStaleSearchingCleanup,
+  runExpiredPaymentCleanup,
 };

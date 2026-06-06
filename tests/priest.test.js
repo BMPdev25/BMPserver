@@ -142,7 +142,7 @@ describe('PUT /api/priest/bookings/:bookingId/status', () => {
     expect(res.body.booking.status).toBe('confirmed')
   })
 
-  it('returns 400 for invalid status transition (rejected is not a valid status)', async () => {
+  it('returns 400 for invalid status transition (pending → in_progress)', async () => {
     const devotee = await createTestDevotee()
     const { user: priestUser } = await createTestPriest()
     const booking = await createTestBooking(devotee._id, priestUser._id, { status: 'pending' })
@@ -150,7 +150,7 @@ describe('PUT /api/priest/bookings/:bookingId/status', () => {
     const res = await request(app)
       .put(`/api/priest/bookings/${booking._id}/status`)
       .set(authAs(priestUser, 'priest'))
-      .send({ status: 'rejected' })
+      .send({ status: 'in_progress' })
 
     expect(res.status).toBe(400)
   })

@@ -111,13 +111,15 @@ exports.cancelBookingByDevotee = async (req, res, next) => {
 // Create payment order
 exports.createPaymentOrder = async (req, res, next) => {
   try {
-    const { bookingId, amount } = req.body;
+    const { bookingId } = req.body;
     const userId = req.user.id;
 
-    if (!bookingId || !amount) {
+    // The amount is always derived server-side from booking.totalAmount — a
+    // client-supplied amount is never trusted, so only bookingId is required.
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: 'Booking ID and amount are required'
+        message: 'Booking ID is required'
       });
     }
 
