@@ -1,4 +1,5 @@
 process.env.NODE_ENV = 'test'
+process.env.RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || 'test_secret'
 
 jest.mock('expo-server-sdk', () => ({
   Expo: class {
@@ -16,6 +17,7 @@ jest.mock('razorpay', () => {
   return jest.fn().mockImplementation(() => require('../mocks/paymentGateway'))
 })
 
+const crypto = require('crypto')
 const request = require('supertest')
 const { app } = require('../../server')
 const Booking = require('../../models/booking')
@@ -48,7 +50,7 @@ describe('Instant Booking Accept Flow', () => {
       bookingType: 'instant',
     })
 
-  test('priest can claim a searching instant booking → confirmed + assigned + payment deadline', async () => {
+  test('priest can claim a searching instant booking → pending (awaiting payment) + assigned + payment deadline', async () => {
     const booking = await createSearchingBooking()
 
     const res = await request(app)
@@ -59,9 +61,10 @@ describe('Instant Booking Accept Flow', () => {
     expect(res.status).toBe(200)
 
     const updated = await Booking.findById(booking._id)
-    expect(updated.status).toBe('confirmed')
+    // Accept-then-pay: priest assigned, booking awaits devotee payment (pending),
+    // becomes 'confirmed' only once payment is verified.
+    expect(updated.status).toBe('pending')
     expect(updated.priestId.toString()).toBe(priestUser._id.toString())
-    // Accept-then-pay: still unpaid, with a payment window opened for the devotee
     expect(updated.paymentStatus).toBe('pending')
     expect(updated.paymentExpiresAt).toBeTruthy()
     expect(updated.paymentExpiresAt.getTime()).toBeGreaterThan(Date.now())
@@ -150,7 +153,15 @@ describe('Instant Booking Creation', () => {
     return d.toISOString().split('T')[0]
   }
 
+  // A date 4 days out — outside the instant window (day+3 onward = scheduled).
+  const farDate = () => {
+    const d = new Date()
+    d.setDate(d.getDate() + 4)
+    return d.toISOString().split('T')[0]
+  }
+
   const validBody = () => ({
+    ceremonyId: ceremony._id.toString(),
     ceremonyType: ceremony.name,
     date: tomorrow(),
     startTime: '10:00',
@@ -182,6 +193,125 @@ describe('Instant Booking Creation', () => {
       .send({ ...validBody(), date: new Date().toISOString().split('T')[0], startTime: `${hh}:${mm}`, endTime: '23:59' })
 
     expect(res.status).toBe(400)
+  })
+
+  test('rejects an instant booking for a date outside the instant window (400)', async () => {
+    const res = await request(app)
+      .post('/api/bookings/instant')
+      .set(authAs(devotee, 'devotee'))
+      .send({ ...validBody(), date: farDate() })
+
+    expect(res.status).toBe(400)
+    expect(res.body.code || res.body.message).toBeTruthy()
+  })
+})
+
+describe('Instant accept-then-pay confirmation', () => {
+  let devotee, priestUser
+
+  beforeEach(async () => {
+    devotee = await createTestDevotee()
+    priestUser = (await createTestPriest()).user
+  })
+
+  test('payment verification confirms a pending instant booking', async () => {
+    // searching → priest accepts → pending (awaiting payment)
+    const booking = await createTestBooking(devotee._id, undefined, {
+      status: 'searching',
+      priestId: undefined,
+      bookingType: 'instant',
+    })
+
+    const accept = await request(app)
+      .post('/api/priest/bookings/instant/accept')
+      .set(authAs(priestUser, 'priest'))
+      .send({ bookingId: booking._id.toString() })
+    expect(accept.status).toBe(200)
+
+    // Stamp an order id (as createPaymentOrder would) and craft a valid signature.
+    await Booking.findByIdAndUpdate(booking._id, {
+      $set: { 'paymentDetails.rzpOrderId': 'order_test_123' },
+    })
+    const sig = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update('order_test_123|pay_test_123')
+      .digest('hex')
+
+    const verify = await request(app)
+      .post('/api/bookings/payment/verify')
+      .set(authAs(devotee, 'devotee'))
+      .send({
+        bookingId: booking._id.toString(),
+        rzpOrderId: 'order_test_123',
+        rzpPaymentId: 'pay_test_123',
+        rzpSignature: sig,
+      })
+    expect(verify.status).toBe(200)
+
+    const updated = await Booking.findById(booking._id)
+    expect(updated.paymentStatus).toBe('completed')
+    expect(updated.status).toBe('confirmed') // instant auto-confirms on payment
+  })
+
+  test('devotee can cancel a searching instant booking', async () => {
+    const booking = await createTestBooking(devotee._id, undefined, {
+      status: 'searching',
+      priestId: undefined,
+      bookingType: 'instant',
+    })
+
+    const res = await request(app)
+      .put(`/api/bookings/${booking._id}/cancel-devotee`)
+      .set(authAs(devotee, 'devotee'))
+      .send({ reason: 'Changed my mind' })
+
+    expect(res.status).toBe(200)
+    const updated = await Booking.findById(booking._id)
+    expect(updated.status).toBe('cancelled')
+  })
+})
+
+describe('GET /ceremonies/:id/with-priests', () => {
+  test('returns the ceremony and priests who perform it with their own price', async () => {
+    const ceremony = await createTestCeremony()
+    await createTestPriest({
+      profile: {
+        services: [{ ceremonyId: ceremony._id, price: 2500, durationMinutes: 90 }],
+      },
+    })
+
+    const res = await request(app).get(`/api/ceremonies/${ceremony._id}/with-priests`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.ceremony._id.toString()).toBe(ceremony._id.toString())
+    expect(res.body.data.priests.length).toBeGreaterThanOrEqual(1)
+    expect(res.body.data.priests[0].priceForThisCeremony).toBe(2500)
+  })
+})
+
+describe('Scheduled booking rejects instant-window dates', () => {
+  test('POST /bookings within the instant window returns 400 USE_INSTANT_WINDOW', async () => {
+    const devotee = await createTestDevotee()
+    const priestUser = (await createTestPriest()).user
+    const ceremony = await createTestCeremony()
+
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    const res = await request(app)
+      .post('/api/bookings')
+      .set(authAs(devotee, 'devotee'))
+      .send({
+        priestId: priestUser._id.toString(),
+        ceremonyType: ceremony.name,
+        date: tomorrow.toISOString().split('T')[0],
+        startTime: '10:00',
+        endTime: '11:00',
+        location: { address: 'Test Street 123', city: 'Bangalore' },
+      })
+
+    expect(res.status).toBe(400)
+    expect(res.body.code === 'USE_INSTANT_WINDOW' || /instant booking window/i.test(res.body.message)).toBe(true)
   })
 })
 

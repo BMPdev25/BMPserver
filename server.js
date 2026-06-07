@@ -27,6 +27,7 @@ const {
   schedulePushReminders,
   scheduleExpiredPaymentCleanup,
   scheduleStaleSearchingCleanup,
+  scheduleInstantExpiryCleanup,
 } = require('./jobs/cronJobs');
 
 // Load environment variables
@@ -38,6 +39,7 @@ if (process.env.NODE_ENV !== 'test') {
   schedulePushReminders();
   scheduleExpiredPaymentCleanup();
   scheduleStaleSearchingCleanup();
+  scheduleInstantExpiryCleanup();
 }
 
 // Create Express app
@@ -72,9 +74,13 @@ io.on('connection', (socket) => {
   });
 });
 
-// Make io and userSockets accessible in controllers
+// Make io and userSockets accessible in controllers (via req.app) and in
+// services that have no request context (via globals — used by the instant
+// booking broadcast).
 app.set('io', io);
 app.set('userSockets', userSockets);
+global.io = io;
+global.userSockets = userSockets;
 
 // Security and performance middleware
 app.use(helmet());

@@ -13,7 +13,7 @@ jest.mock('../../config/firebase', () => ({
 }))
 
 const Booking = require('../../models/booking')
-const { runExpiredPaymentCleanup } = require('../../jobs/cronJobs')
+const { runExpiredPaymentCleanup, runInstantExpiryCleanup } = require('../../jobs/cronJobs')
 const {
   createTestDevotee,
   createTestPriest,
@@ -79,5 +79,41 @@ describe('Expired payment cleanup', () => {
     await runExpiredPaymentCleanup()
     const updated = await Booking.findById(booking._id)
     expect(updated.status).toBe('confirmed')
+  })
+})
+
+describe('Instant expiry cleanup', () => {
+  let devotee
+
+  beforeEach(async () => {
+    devotee = await createTestDevotee()
+  })
+
+  test('cancels a searching instant booking past its 10-minute TTL', async () => {
+    const booking = await createTestBooking(devotee._id, undefined, {
+      status: 'searching',
+      priestId: undefined,
+      bookingType: 'instant',
+      instantExpiresAt: past(),
+    })
+
+    const count = await runInstantExpiryCleanup()
+    expect(count).toBeGreaterThanOrEqual(1)
+
+    const updated = await Booking.findById(booking._id)
+    expect(updated.status).toBe('cancelled')
+  })
+
+  test('does NOT cancel a searching booking still within its TTL', async () => {
+    const booking = await createTestBooking(devotee._id, undefined, {
+      status: 'searching',
+      priestId: undefined,
+      bookingType: 'instant',
+      instantExpiresAt: future(),
+    })
+
+    await runInstantExpiryCleanup()
+    const updated = await Booking.findById(booking._id)
+    expect(updated.status).toBe('searching')
   })
 })

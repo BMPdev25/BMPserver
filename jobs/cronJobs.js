@@ -188,6 +188,59 @@ const scheduleExpiredPaymentCleanup = () => {
   });
 };
 
+// Expire instant bookings that no priest accepted within their 10-minute TTL.
+// Cancels them and nudges the devotee toward scheduling a specific pandit.
+const runInstantExpiryCleanup = async () => {
+  const expired = await Booking.find({
+    bookingType: 'instant',
+    status: 'searching',
+    instantExpiresAt: { $lt: new Date() },
+  });
+
+  for (const b of expired) {
+    // Use an atomic update (not .save()) — a 'searching' booking has no priestId,
+    // and saving it as 'cancelled' would trip the priestId-required validator.
+    await Booking.findByIdAndUpdate(b._id, {
+      $set: {
+        status: 'cancelled',
+        cancellationReason: 'No pandit accepted within 10 minutes',
+        cancellationDate: new Date(),
+      },
+      $push: {
+        statusHistory: {
+          status: 'cancelled',
+          timestamp: new Date(),
+          reason: 'No pandit accepted within 10 minutes',
+        },
+      },
+    });
+
+    await pushService.sendToUser(
+      b.devoteeId,
+      'No Pandit Found',
+      'No pandit accepted your instant request. You can schedule with a specific pandit instead.',
+      { screen: 'BookingsTab', bookingId: b._id.toString(), targetRole: 'devotee' },
+      'booking'
+    );
+  }
+
+  if (expired.length > 0) {
+    console.log(`[Cron] Expired ${expired.length} instant bookings`);
+  }
+  return expired.length;
+};
+
+const scheduleInstantExpiryCleanup = () => {
+  // Every 2 minutes.
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      await runInstantExpiryCleanup();
+    } catch (err) {
+      console.error('[Cron] Instant expiry cleanup failed:', err.message);
+    }
+  });
+};
+
 // Every hour — delete stale 'searching' bookings older than 2 hours (no priest ever assigned)
 const scheduleStaleSearchingCleanup = () => {
   cron.schedule('0 * * * *', async () => {
@@ -211,5 +264,7 @@ module.exports = {
   schedulePushReminders,
   scheduleExpiredPaymentCleanup,
   scheduleStaleSearchingCleanup,
+  scheduleInstantExpiryCleanup,
   runExpiredPaymentCleanup,
+  runInstantExpiryCleanup,
 };

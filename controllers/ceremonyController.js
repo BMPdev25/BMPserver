@@ -1,5 +1,6 @@
 const Ceremony = require('../models/ceremony');
 const Category = require('../models/ceremonyCategory');
+const PriestProfile = require('../models/priestProfile');
 
 // Get all ceremonies (with search & pagination)
 exports.getAllCeremonies = async (req, res) => {
@@ -65,6 +66,55 @@ exports.getCeremonyById = async (req, res) => {
       return res.status(404).json({ message: 'Ceremony not found' });
     }
     res.status(500).json({ message: 'Server Error' });
+  }
+};
+
+// Get a ceremony together with the verified priests who perform it. Each priest
+// carries their own price/duration for THIS ceremony (falling back to the
+// ceremony defaults). Powers the devotee CeremonyDetails screen.
+exports.getCeremonyWithPriests = async (req, res, next) => {
+  try {
+    const ceremony = await Ceremony.findById(req.params.id).lean();
+    if (!ceremony) {
+      return res.status(404).json({ success: false, message: 'Ceremony not found' });
+    }
+
+    const priestProfiles = await PriestProfile.find({
+      isVerified: true,
+      'services.ceremonyId': ceremony._id,
+    })
+      .select('userId services ratings experience religiousTradition currentAvailability profilePicture')
+      .populate('userId', 'name profilePicture languagesSpoken')
+      .lean();
+
+    const ceremonyDefaultDuration = ceremony.duration?.typical || null;
+
+    const priests = priestProfiles.map((p) => {
+      const service = (p.services || []).find(
+        (s) => s.ceremonyId?.toString() === ceremony._id.toString()
+      );
+      return {
+        _id: p._id,
+        userId: p.userId?._id || p.userId,
+        name: p.userId?.name || 'Pandit',
+        profilePicture: p.profilePicture || p.userId?.profilePicture?.url || null,
+        languages: p.userId?.languagesSpoken || [],
+        rating: p.ratings?.average || 0,
+        reviewCount: p.ratings?.count || 0,
+        experienceYears: p.experience || 0,
+        religiousTradition: p.religiousTradition || null,
+        availability: p.currentAvailability?.status || 'offline',
+        priceForThisCeremony: service?.price ?? ceremony.pricing.basePrice,
+        durationMinutes: service?.durationMinutes ?? ceremonyDefaultDuration,
+      };
+    });
+
+    res.status(200).json({ success: true, data: { ceremony, priests } });
+  } catch (err) {
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ success: false, message: 'Ceremony not found' });
+    }
+    next(err);
   }
 };
 

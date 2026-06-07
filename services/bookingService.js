@@ -268,7 +268,21 @@ const getBookingDetails = async (bookingId, userId) => {
 };
 
 const createBooking = async (devoteeId, bookingData) => {
-  const { priestId, ceremonyType, date, startTime, endTime, location, notes } = bookingData;
+  const { priestId, ceremonyType, ceremonyId, date, startTime, endTime, location, notes } = bookingData;
+  const { isScheduledWindow } = require('../utils/dateWindows');
+
+  // ENFORCE: scheduled bookings are for day+3 onwards. Dates within the instant
+  // window must go through the instant flow — the frontend detects this code and
+  // offers to switch the devotee to instant booking.
+  if (!isScheduledWindow(date)) {
+    const error = new Error(
+      'This date is within the instant booking window. Please use instant booking ' +
+      'for today, tomorrow, and the day after.'
+    );
+    error.statusCode = 400;
+    error.code = 'USE_INSTANT_WINDOW';
+    throw error;
+  }
 
   const now = new Date();
   const minLeadTime = 2 * 60 * 60 * 1000;
@@ -291,9 +305,6 @@ const createBooking = async (devoteeId, bookingData) => {
     error.statusCode = 404;
     throw error;
   }
-
-  const basePrice = ceremonyItem.pricing.basePrice;
-  const platformFee = Math.round(basePrice * PLATFORM_FEE_PERCENT);
 
   const todayStr = new Date().toISOString().split('T')[0];
   const bookingDateStr = new Date(date).toISOString().split('T')[0];
@@ -319,6 +330,15 @@ const createBooking = async (devoteeId, bookingData) => {
     throw error;
   }
 
+  // Price source: the priest's own price for this ceremony (falls back to the
+  // ceremony base price if the priest hasn't set a specific price).
+  const ceremonyIdForPrice = ceremonyId || ceremonyItem._id;
+  const priestService = (priestProfile?.services || []).find(
+    (s) => s.ceremonyId?.toString() === ceremonyIdForPrice?.toString()
+  );
+  const basePrice = priestService?.price ?? ceremonyItem.pricing.basePrice;
+  const platformFee = Math.round(basePrice * PLATFORM_FEE_PERCENT);
+
   if (priestProfile && priestProfile.availability) {
     const [sH, sM] = startTime.split(':').map(Number);
     const [eH, eM] = endTime.split(':').map(Number);
@@ -343,6 +363,8 @@ const createBooking = async (devoteeId, bookingData) => {
     devoteeId,
     priestId,
     ceremonyType,
+    ceremonyId: ceremonyIdForPrice || null,
+    bookingType: 'scheduled',
     date: new Date(date),
     startTime,
     endTime,
@@ -380,49 +402,80 @@ const createBooking = async (devoteeId, bookingData) => {
   return booking;
 };
 
+// Instant booking lifecycle timings.
+const INSTANT_TTL_MS = 10 * 60 * 1000;       // searching expires after 10 min
+const INSTANT_HEAD_START_MS = 3 * 60 * 1000; // preferred priest's 3-min lead
+
 /**
- * Create an INSTANT booking. Unlike createBooking, no priest is chosen up front:
- * the booking is broadcast to verified priests and sits in 'searching' until one
- * accepts (see acceptInstantBooking). No payment is taken now — this is the
- * accept-then-pay flow, so the devotee pays only after a priest claims it.
+ * Create an INSTANT booking. No priest is chosen up front: the booking is
+ * broadcast to priests who perform the ceremony and sits in 'searching' until
+ * one accepts (see acceptInstantBooking). No payment is taken now — the devotee
+ * pays only after a priest accepts (accept-then-pay).
+ *
+ * Enforces the IST instant date window (today … day+2) and the 2-hour lead time.
+ * If a preferredPriestId is supplied (instant started from a priest's page),
+ * that priest is notified first and gets a short head-start before the broadcast.
  */
 const createInstantBooking = async (devoteeId, bookingData) => {
-  const { ceremonyType, date, startTime, endTime, location, notes } = bookingData;
+  const { ceremonyId, date, startTime, endTime, location, notes, preferredPriestId } = bookingData;
+  const { isInstantWindow } = require('../utils/dateWindows');
 
-  // Same 2-hour lead-time rule as scheduled bookings (measured from now).
-  const now = new Date();
-  const bookingStartTime = new Date(date);
+  // ENFORCE: date must be inside the instant window (today … day+2, IST).
+  if (!isInstantWindow(date)) {
+    const error = new Error(
+      'Instant booking is only available for today, tomorrow, and the day after. ' +
+      'For later dates, please choose a specific pandit.'
+    );
+    error.statusCode = 400;
+    error.code = 'NOT_INSTANT_WINDOW';
+    throw error;
+  }
+
+  // ENFORCE: ceremony must exist (looked up by id for instant bookings).
+  if (!ceremonyId || !mongoose.Types.ObjectId.isValid(ceremonyId)) {
+    const error = new Error('A valid ceremonyId is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  const ceremony = await Ceremony.findById(ceremonyId).select('name pricing');
+  if (!ceremony) {
+    const error = new Error('Ceremony not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // ENFORCE: the ceremony must start at least 2 hours from now (IST).
   const [h, m] = (startTime || '').split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) {
     const error = new Error('A valid startTime (HH:MM) is required');
     error.statusCode = 400;
     throw error;
   }
-  bookingStartTime.setHours(h, m, 0, 0);
-  if (bookingStartTime.getTime() - now.getTime() < INSTANT_MIN_LEAD_MS) {
-    const error = new Error('Instant bookings must start at least 2 hours from now');
+  const ceremonyDateTime = new Date(`${date}T${startTime}:00+05:30`);
+  if (ceremonyDateTime.getTime() < Date.now() + INSTANT_MIN_LEAD_MS) {
+    const error = new Error('Ceremony must start at least 2 hours from now');
     error.statusCode = 400;
     throw error;
   }
 
-  const searchName = (ceremonyType || '').trim();
-  const ceremonyItem = await Ceremony.findOne({
-    name: new RegExp(`^${searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
-  });
-  if (!ceremonyItem) {
-    const error = new Error('Ceremony type not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const basePrice = ceremonyItem.pricing.basePrice;
+  const basePrice = ceremony.pricing.basePrice;
   const platformFee = Math.round(basePrice * PLATFORM_FEE_PERCENT);
+  // Devotee is charged base + platform fee (keeps the revenue ledger balanced);
+  // the priest's share is basePrice and the platform keeps platformFee.
   const totalAmount = basePrice + platformFee;
 
-  const booking = new Booking({
+  const instantExpiresAt = new Date(Date.now() + INSTANT_TTL_MS);
+  const headStartExpiresAt = preferredPriestId
+    ? new Date(Date.now() + INSTANT_HEAD_START_MS)
+    : null;
+
+  const booking = await Booking.create({
     devoteeId,
-    // priestId intentionally omitted — assigned on accept
-    ceremonyType,
+    priestId: null, // not assigned yet
+    ceremonyType: ceremony.name,
+    ceremonyId,
+    bookingType: 'instant',
+    status: 'searching',
     date: new Date(date),
     startTime,
     endTime,
@@ -431,8 +484,10 @@ const createInstantBooking = async (devoteeId, bookingData) => {
     basePrice,
     platformFee,
     totalAmount,
-    status: 'searching',
-    bookingType: 'instant',
+    paymentStatus: 'pending', // payment happens AFTER a priest accepts
+    preferredPriestId: preferredPriestId || null,
+    instantExpiresAt,
+    headStartExpiresAt,
     paymentDetails: {
       receiptNumber: `BMP_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
     },
@@ -446,28 +501,86 @@ const createInstantBooking = async (devoteeId, bookingData) => {
     ],
   });
 
-  await booking.save();
-  await booking.populate([{ path: 'devoteeId', select: 'name phone email' }]);
-
-  // Broadcast to verified, available priests so the first to accept wins.
-  try {
-    const candidates = await PriestProfile.find({
-      isVerified: true,
-      'currentAvailability.status': 'available',
-    })
-      .select('userId')
-      .limit(50)
-      .lean();
-
-    await Promise.all(
-      candidates.map((p) => pushService.notifyPriestNewRequest(p.userId, booking))
-    );
-  } catch (e) {
-    // Broadcast failure must not fail the booking creation.
-    console.warn('[Instant] Broadcast to priests failed:', e.message);
-  }
+  await broadcastInstantBooking(booking, {
+    headStartPriestId: preferredPriestId || null,
+  });
 
   return booking;
+};
+
+/**
+ * Notify priests of a new instant booking. Targets verified, currently-available
+ * priests who actually perform the requested ceremony. If a preferred priest is
+ * given, they are notified first and everyone else only after the head-start
+ * window elapses (and only if the booking is still searching).
+ */
+const broadcastInstantBooking = async (booking, options = {}) => {
+  const { headStartPriestId } = options;
+  const io = global.io || null;
+  const userSockets = global.userSockets || null; // Map<userId, socketId>
+
+  const availablePriests = await PriestProfile.find({
+    isVerified: true,
+    'currentAvailability.status': 'available',
+    'services.ceremonyId': booking.ceremonyId,
+  })
+    .select('userId')
+    .lean();
+
+  if (availablePriests.length === 0) {
+    console.warn(`[Instant] No available priests for ceremony ${booking.ceremonyId}`);
+    return;
+  }
+
+  const priestUserIds = availablePriests.map((p) => p.userId.toString());
+
+  const notifyPriest = async (priestUserId) => {
+    const socketId = userSockets && typeof userSockets.get === 'function'
+      ? userSockets.get(priestUserId)
+      : null;
+    if (socketId && io) {
+      io.to(socketId).emit('new_instant_request', {
+        bookingId: booking._id,
+        ceremonyType: booking.ceremonyType,
+        date: booking.date,
+        startTime: booking.startTime,
+        location: booking.location,
+        basePrice: booking.basePrice,
+        isInstant: true,
+        expiresAt: booking.instantExpiresAt,
+      });
+    }
+    await pushService.sendToUser(
+      priestUserId,
+      'Instant Booking Request ⚡',
+      `${booking.ceremonyType} requested for today/tomorrow. Respond quickly!`,
+      { screen: 'RequestsTab', bookingId: booking._id.toString(), targetRole: 'priest' },
+      'booking'
+    );
+  };
+
+  const headStartId = headStartPriestId ? headStartPriestId.toString() : null;
+  if (headStartId && priestUserIds.includes(headStartId)) {
+    // Give the preferred priest a head-start, then open to everyone else.
+    await notifyPriest(headStartId);
+    setTimeout(async () => {
+      try {
+        const current = await Booking.findById(booking._id).select('status').lean();
+        if (current?.status === 'searching') {
+          for (const priestId of priestUserIds) {
+            if (priestId !== headStartId) await notifyPriest(priestId);
+          }
+        }
+      } catch (e) {
+        console.warn('[Instant] Head-start broadcast failed:', e.message);
+      }
+    }, INSTANT_HEAD_START_MS);
+  } else {
+    // No preference — notify everyone immediately.
+    for (const priestId of priestUserIds) {
+      await notifyPriest(priestId);
+    }
+  }
 };
 
 /**
@@ -513,6 +626,19 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
 
   if (!VALID_TRANSITIONS[booking.status]?.includes(status)) {
     const error = new Error(`Cannot transition booking from '${booking.status}' to '${status}'`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Instant bookings are confirmed by the devotee's payment, not by the priest
+  // re-accepting. Block a priest from confirming an unpaid instant booking so the
+  // accept-then-pay gate can't be bypassed.
+  if (
+    status === 'confirmed' &&
+    booking.bookingType === 'instant' &&
+    booking.paymentStatus !== 'completed'
+  ) {
+    const error = new Error('This instant booking is awaiting devotee payment and cannot be confirmed manually.');
     error.statusCode = 400;
     throw error;
   }
@@ -803,6 +929,33 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     }
   }
 
+  // Reject if the instant broadcast has already expired (10-min TTL).
+  if (booking.instantExpiresAt && Date.now() > booking.instantExpiresAt.getTime()) {
+    await Booking.findByIdAndUpdate(booking._id, {
+      $set: {
+        status: 'cancelled',
+        cancellationReason: 'Instant booking expired — no priest accepted in time',
+        cancellationDate: new Date(),
+      },
+    });
+    const error = new Error('This instant booking has expired.');
+    error.statusCode = 410;
+    throw error;
+  }
+
+  // The priest must actually offer this ceremony (when the booking records one).
+  if (booking.ceremonyId) {
+    const offersCeremony = await PriestProfile.findOne({
+      userId: priestId,
+      'services.ceremonyId': booking.ceremonyId,
+    }).select('_id');
+    if (!offersCeremony) {
+      const error = new Error('You do not offer this ceremony.');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
   // Reject the claim if the priest already has an overlapping active booking
   const bookingDay = new Date(booking.date);
   const startOfDay = new Date(bookingDay);
@@ -813,7 +966,7 @@ const acceptInstantBooking = async (bookingId, priestId) => {
   const sameDayBookings = await Booking.find({
     priestId,
     date: { $gte: startOfDay, $lte: endOfDay },
-    status: { $in: ['confirmed', 'arrived', 'in_progress'] },
+    status: { $in: ['pending', 'confirmed', 'arrived', 'in_progress'] },
   }).select('startTime endTime');
 
   const overlaps = sameDayBookings.some((other) =>
@@ -821,30 +974,32 @@ const acceptInstantBooking = async (bookingId, priestId) => {
   );
   if (overlaps) {
     const error = new Error(
-      'You already have a confirmed booking that overlaps this time.'
+      'You already have a booking that overlaps this time.'
     );
     error.statusCode = 409;
     throw error;
   }
 
   // Atomic first-come claim: only the request that still sees 'searching' wins.
-  // The booking becomes 'confirmed' but stays unpaid — the devotee now has
-  // PAYMENT_WINDOW_MS to pay (accept-then-pay). paymentExpiresAt lets the cron
-  // release the priest's slot if payment never completes.
+  // The booking moves to 'pending' (priest assigned, awaiting devotee payment) —
+  // it is NOT confirmed until the devotee pays. paymentExpiresAt lets the cron
+  // release the slot if payment never completes; instantExpiresAt is cleared so
+  // the instant-expiry sweep no longer touches it.
   const claimed = await Booking.findOneAndUpdate(
     { _id: bookingId, status: 'searching' },
     {
       $set: {
         priestId,
-        status: 'confirmed',
+        status: 'pending',
+        instantExpiresAt: null,
         paymentExpiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
       },
       $push: {
         statusHistory: {
-          status: 'confirmed',
+          status: 'pending',
           timestamp: new Date(),
           updatedBy: priestId,
-          reason: 'Instant booking accepted by priest',
+          reason: 'Instant booking accepted — awaiting devotee payment',
         },
       },
     },
@@ -857,6 +1012,7 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
 
+  // Tell the devotee a priest has been assigned and payment is now required.
   await pushService.notifyDevoteeBookingConfirmed(
     claimed.devoteeId._id || claimed.devoteeId,
     claimed
@@ -879,7 +1035,9 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
     {
       _id: bookingId,
       devoteeId: userId,
-      status: { $in: ['pending', 'confirmed'] },
+      // 'searching' included so a devotee can abandon an instant request that
+      // no priest has accepted yet.
+      status: { $in: ['pending', 'confirmed', 'searching'] },
     },
     {
       $set: {
@@ -925,10 +1083,13 @@ const cancelBookingByDevotee = async (bookingId, userId, reason) => {
   // Only ONE request reaches here — safe to attempt refund
   await issueRefundIfPaid(bookingId, updated, cancellationReason);
 
-  await pushService.notifyPriestBookingCancelled(
-    updated.priestId._id || updated.priestId,
-    updated
-  );
+  // A 'searching' instant booking has no assigned priest yet — nothing to notify.
+  if (updated.priestId) {
+    await pushService.notifyPriestBookingCancelled(
+      updated.priestId._id || updated.priestId,
+      updated
+    );
+  }
   await updateDevoteeReliability(userId, 'cancellation').catch(() => {});
 
   return updated;
@@ -1037,6 +1198,20 @@ const verifyPayment = async (bookingId, paymentData) => {
   booking.paymentStatus = 'completed';
   booking.paymentDetails.rzpPaymentId = rzpPaymentId;
   booking.paymentDetails.rzpSignature = rzpSignature;
+
+  // Instant bookings are accept-then-pay: the priest already accepted (status
+  // 'pending', awaiting payment), so a successful payment confirms the booking.
+  // Scheduled bookings are pay-first and stay 'pending' until the priest accepts.
+  if (booking.bookingType === 'instant' && booking.status === 'pending') {
+    booking.status = 'confirmed';
+    booking.statusHistory.push({
+      status: 'confirmed',
+      timestamp: new Date(),
+      updatedBy: booking.devoteeId,
+      reason: 'Payment completed — instant booking confirmed',
+    });
+  }
+
   await booking.save();
 
   return booking;

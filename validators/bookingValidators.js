@@ -43,9 +43,19 @@ const createBookingRules = [
     .isLength({ max: 100 }).withMessage('City name too long'),
 ]
 
-// Instant bookings have no priest chosen up front — same rules minus priestId
-// (which is the first rule in createBookingRules).
-const createInstantBookingRules = createBookingRules.slice(1)
+// Instant bookings have no priest chosen up front and are keyed by ceremonyId
+// (not a free-text ceremonyType). preferredPriestId is optional (head-start).
+const createInstantBookingRules = [
+  body('ceremonyId')
+    .notEmpty().withMessage('Ceremony ID is required')
+    .isMongoId().withMessage('Invalid ceremony ID'),
+  body('preferredPriestId')
+    .optional({ nullable: true })
+    .isMongoId().withMessage('Invalid preferred priest ID'),
+  // Reuse the shared date/time/location rules (everything in createBookingRules
+  // except the priestId and ceremonyType rules, which are the first two entries).
+  ...createBookingRules.slice(2),
+]
 
 const verifyPaymentRules = [
   body('bookingId')

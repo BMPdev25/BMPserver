@@ -65,7 +65,32 @@ const bookingSchema = new mongoose.Schema({
   bookingType: {
     type: String,
     enum: ['scheduled', 'instant'],
+    required: true,
     default: 'scheduled',
+  },
+  // For instant bookings: which ceremony is requested (no priest chosen yet)
+  ceremonyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ceremony',
+    default: null,
+  },
+  // For instant bookings: a preferred priest who gets a head-start before the
+  // request is broadcast to everyone (set when instant is started from a
+  // specific priest's page).
+  preferredPriestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  // For instant bookings: when the broadcast (searching) expires.
+  instantExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  // For instant bookings: until when only the preferred priest is notified.
+  headStartExpiresAt: {
+    type: Date,
+    default: null,
   },
   expiryTime: {
     type: Date,
