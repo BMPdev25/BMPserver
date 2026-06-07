@@ -16,6 +16,11 @@ const crypto = require('crypto');
 const pushService = require('./pushService');
 
 const PLATFORM_FEE_PERCENT = 0.05;
+// Minimum gap a priest must have between accepting an instant booking and the
+// ceremony start — gives travel + preparation time.
+const INSTANT_MIN_LEAD_MS = 2 * 60 * 60 * 1000;
+// How long the devotee has to pay after a priest accepts (accept-then-pay flow).
+const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 
 let razorpay;
 const getRazorpayInstance = () => {
@@ -375,6 +380,112 @@ const createBooking = async (devoteeId, bookingData) => {
   return booking;
 };
 
+/**
+ * Create an INSTANT booking. Unlike createBooking, no priest is chosen up front:
+ * the booking is broadcast to verified priests and sits in 'searching' until one
+ * accepts (see acceptInstantBooking). No payment is taken now — this is the
+ * accept-then-pay flow, so the devotee pays only after a priest claims it.
+ */
+const createInstantBooking = async (devoteeId, bookingData) => {
+  const { ceremonyType, date, startTime, endTime, location, notes } = bookingData;
+
+  // Same 2-hour lead-time rule as scheduled bookings (measured from now).
+  const now = new Date();
+  const bookingStartTime = new Date(date);
+  const [h, m] = (startTime || '').split(':').map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) {
+    const error = new Error('A valid startTime (HH:MM) is required');
+    error.statusCode = 400;
+    throw error;
+  }
+  bookingStartTime.setHours(h, m, 0, 0);
+  if (bookingStartTime.getTime() - now.getTime() < INSTANT_MIN_LEAD_MS) {
+    const error = new Error('Instant bookings must start at least 2 hours from now');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const searchName = (ceremonyType || '').trim();
+  const ceremonyItem = await Ceremony.findOne({
+    name: new RegExp(`^${searchName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+  });
+  if (!ceremonyItem) {
+    const error = new Error('Ceremony type not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const basePrice = ceremonyItem.pricing.basePrice;
+  const platformFee = Math.round(basePrice * PLATFORM_FEE_PERCENT);
+  const totalAmount = basePrice + platformFee;
+
+  const booking = new Booking({
+    devoteeId,
+    // priestId intentionally omitted — assigned on accept
+    ceremonyType,
+    date: new Date(date),
+    startTime,
+    endTime,
+    location,
+    notes,
+    basePrice,
+    platformFee,
+    totalAmount,
+    status: 'searching',
+    bookingType: 'instant',
+    paymentDetails: {
+      receiptNumber: `BMP_${Date.now()}_${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
+    },
+    statusHistory: [
+      {
+        status: 'searching',
+        timestamp: new Date(),
+        updatedBy: devoteeId,
+        reason: 'Instant booking created — searching for a priest',
+      },
+    ],
+  });
+
+  await booking.save();
+  await booking.populate([{ path: 'devoteeId', select: 'name phone email' }]);
+
+  // Broadcast to verified, available priests so the first to accept wins.
+  try {
+    const candidates = await PriestProfile.find({
+      isVerified: true,
+      'currentAvailability.status': 'available',
+    })
+      .select('userId')
+      .limit(50)
+      .lean();
+
+    await Promise.all(
+      candidates.map((p) => pushService.notifyPriestNewRequest(p.userId, booking))
+    );
+  } catch (e) {
+    // Broadcast failure must not fail the booking creation.
+    console.warn('[Instant] Broadcast to priests failed:', e.message);
+  }
+
+  return booking;
+};
+
+/**
+ * List instant bookings still awaiting a priest ('searching'), newest first.
+ * These have no priestId yet — any verified priest may claim one. Returns lean
+ * objects with the devotee summary for the priest's request feed.
+ */
+const getInstantAvailable = async ({ limit = 20 } = {}) => {
+  const bookings = await Booking.find({ status: 'searching', bookingType: 'instant' })
+    .select('ceremonyType date startTime endTime basePrice totalAmount location devoteeId status bookingType createdAt')
+    .populate('devoteeId', 'name profilePicture createdAt')
+    .sort({ createdAt: -1 })
+    .limit(parseInt(limit))
+    .lean();
+
+  return bookings;
+};
+
 const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   const VALID_TRANSITIONS = {
     pending: ['confirmed', 'cancelled', 'rejected'],
@@ -676,6 +787,22 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
 
+  // The ceremony must start at least INSTANT_MIN_LEAD_MS from the moment of
+  // acceptance so the priest has time to travel and prepare. Start time is
+  // derived the same way as createBooking's lead-time check (server-local clock).
+  const ceremonyStart = new Date(booking.date);
+  const [startH, startM] = (booking.startTime || '').split(':').map(Number);
+  if (!Number.isNaN(startH) && !Number.isNaN(startM)) {
+    ceremonyStart.setHours(startH, startM, 0, 0);
+    if (ceremonyStart.getTime() - Date.now() < INSTANT_MIN_LEAD_MS) {
+      const error = new Error(
+        'This ceremony starts too soon to accept — instant bookings need at least 2 hours of lead time.'
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
   // Reject the claim if the priest already has an overlapping active booking
   const bookingDay = new Date(booking.date);
   const startOfDay = new Date(bookingDay);
@@ -701,10 +828,17 @@ const acceptInstantBooking = async (bookingId, priestId) => {
   }
 
   // Atomic first-come claim: only the request that still sees 'searching' wins.
+  // The booking becomes 'confirmed' but stays unpaid — the devotee now has
+  // PAYMENT_WINDOW_MS to pay (accept-then-pay). paymentExpiresAt lets the cron
+  // release the priest's slot if payment never completes.
   const claimed = await Booking.findOneAndUpdate(
     { _id: bookingId, status: 'searching' },
     {
-      $set: { priestId, status: 'confirmed' },
+      $set: {
+        priestId,
+        status: 'confirmed',
+        paymentExpiresAt: new Date(Date.now() + PAYMENT_WINDOW_MS),
+      },
       $push: {
         statusHistory: {
           status: 'confirmed',
@@ -912,6 +1046,8 @@ module.exports = {
   getBookings,
   getBookingDetails,
   createBooking,
+  createInstantBooking,
+  getInstantAvailable,
   updateBookingStatus,
   acceptInstantBooking,
   cancelBookingByDevotee,

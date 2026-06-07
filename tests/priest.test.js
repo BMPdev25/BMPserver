@@ -155,7 +155,7 @@ describe('PUT /api/priest/bookings/:bookingId/status', () => {
     expect(res.status).toBe(400)
   })
 
-  it('priest can decline a booking with status cancelled', async () => {
+  it('priest declines a pending request with status rejected', async () => {
     const devotee = await createTestDevotee()
     const { user: priestUser } = await createTestPriest()
     const booking = await createTestBooking(devotee._id, priestUser._id, { status: 'pending' })
@@ -163,7 +163,21 @@ describe('PUT /api/priest/bookings/:bookingId/status', () => {
     const res = await request(app)
       .put(`/api/priest/bookings/${booking._id}/status`)
       .set(authAs(priestUser, 'priest'))
-      .send({ status: 'cancelled', reason: 'Not available' })
+      .send({ status: 'rejected', reason: 'Not available' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.booking.status).toBe('rejected')
+  })
+
+  it('priest cancels an already-confirmed booking with status cancelled', async () => {
+    const devotee = await createTestDevotee()
+    const { user: priestUser } = await createTestPriest()
+    const booking = await createTestBooking(devotee._id, priestUser._id, { status: 'confirmed' })
+
+    const res = await request(app)
+      .put(`/api/priest/bookings/${booking._id}/status`)
+      .set(authAs(priestUser, 'priest'))
+      .send({ status: 'cancelled', reason: 'Emergency' })
 
     expect(res.status).toBe(200)
     expect(res.body.booking.status).toBe('cancelled')

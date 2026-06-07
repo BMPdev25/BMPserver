@@ -78,12 +78,12 @@ describe('Booking & Wallet Integration Tests', () => {
     const rejectRes = await request(app)
       .put(`/api/priest/bookings/${booking._id}/status`)
       .set(authAs(priestUser, 'priest'))
-      .send({ status: 'cancelled', reason: 'Unavailable' })
+      .send({ status: 'rejected', reason: 'Unavailable' })
 
     expect(rejectRes.status).toBe(200)
 
     const updated = await Booking.findById(booking._id)
-    expect(updated.status).toBe('cancelled')
+    expect(updated.status).toBe('rejected')
 
     const wallet = await Wallet.findOne({ priestId: priestUser._id })
     expect(wallet).toBeNull()

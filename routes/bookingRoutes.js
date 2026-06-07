@@ -5,6 +5,7 @@ const {
   getBookings,
   getBookingDetails,
   createBooking,
+  createInstantBooking,
   updateBookingStatus,
   markAsCompleted,
   cancelBookingByDevotee,
@@ -15,7 +16,7 @@ const {
 // const { bookInstantCeremony } = require('../controllers/devoteeController'); // Missing implementation
 const { protect, verifiedPriestOnly } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
-const { createBookingRules, verifyPaymentRules, cancelBookingRules } = require('../validators/bookingValidators');
+const { createBookingRules, createInstantBookingRules, verifyPaymentRules, cancelBookingRules } = require('../validators/bookingValidators');
 const rateLimit = require('express-rate-limit');
 
 // Rate limiting
@@ -49,7 +50,7 @@ router.use(protect);
 router.get('/', getBookings);
 router.get('/:bookingId', getBookingDetails);
 router.post('/', bookingCreationLimit, createBookingRules, validate, createBooking);
-// router.post('/instant', bookingCreationLimit, bookInstantCeremony); // Missing implementation
+router.post('/instant', bookingCreationLimit, createInstantBookingRules, validate, createInstantBooking);
 
 // Booking status management
 router.put('/:bookingId/status', verifiedPriestOnly, updateBookingStatus);

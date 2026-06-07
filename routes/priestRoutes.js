@@ -35,6 +35,7 @@ router.get('/documents/:documentType', priestController.getDocument);
 // Operational routes — require admin verification
 router.get('/bookings', verifiedPriestOnly, priestController.getBookings);
 router.get('/bookings/pending-actions', verifiedPriestOnly, priestController.getPendingActions);
+router.get('/bookings/instant-available', verifiedPriestOnly, priestController.getInstantAvailable);
 router.post('/bookings/instant/accept', verifiedPriestOnly, priestController.acceptInstantBooking);
 router.get('/bookings/:bookingId', verifiedPriestOnly, bookingController.getBookingDetails);
 router.put('/bookings/:bookingId/status', verifiedPriestOnly, priestController.updateBookingStatus);

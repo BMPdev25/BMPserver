@@ -43,6 +43,10 @@ const createBookingRules = [
     .isLength({ max: 100 }).withMessage('City name too long'),
 ]
 
+// Instant bookings have no priest chosen up front — same rules minus priestId
+// (which is the first rule in createBookingRules).
+const createInstantBookingRules = createBookingRules.slice(1)
+
 const verifyPaymentRules = [
   body('bookingId')
     .notEmpty().withMessage('Booking ID is required')
@@ -61,4 +65,4 @@ const cancelBookingRules = [
     .isLength({ max: 200 }).withMessage('Reason must be under 200 characters'),
 ]
 
-module.exports = { createBookingRules, verifyPaymentRules, cancelBookingRules }
+module.exports = { createBookingRules, createInstantBookingRules, verifyPaymentRules, cancelBookingRules }

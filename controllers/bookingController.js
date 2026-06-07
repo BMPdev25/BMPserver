@@ -70,6 +70,22 @@ exports.createBooking = async (req, res, next) => {
   }
 };
 
+// Create an instant booking (broadcast to priests; no priest chosen up front)
+exports.createInstantBooking = async (req, res, next) => {
+  try {
+    const devoteeId = req.user.id;
+    const booking = await bookingService.createInstantBooking(devoteeId, req.body);
+
+    res.status(201).json({
+      success: true,
+      message: 'Searching for an available priest',
+      data: booking.toObject(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Update booking status
 exports.updateBookingStatus = async (req, res, next) => {
   try {

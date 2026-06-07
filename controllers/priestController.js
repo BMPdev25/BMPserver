@@ -318,6 +318,16 @@ exports.getAvailablePujaris = async (req, res, next) => {
   }
 };
 
+// List instant bookings still awaiting a priest (broadcast feed)
+exports.getInstantAvailable = async (req, res, next) => {
+  try {
+    const bookings = await bookingService.getInstantAvailable({ limit: req.query.limit });
+    res.status(200).json({ success: true, data: bookings });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get pending actions
 exports.getPendingActions = async (req, res, next) => {
   try {
