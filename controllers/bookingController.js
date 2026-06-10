@@ -54,7 +54,9 @@ exports.createBooking = async (req, res, next) => {
 
     const io = req.app.get('io');
     const userSockets = req.app.get('userSockets');
-    const priestSocketId = userSockets.get(booking.priestId._id?.toString() ?? booking.priestId.toString());
+    const priestSocketId = userSockets.get(
+      booking.priestId._id?.toString() ?? booking.priestId.toString()
+    );
     if (io && priestSocketId) {
       await booking.populate('devoteeId', 'name profilePicture createdAt');
       io.to(priestSocketId).emit('new_booking_request', booking.toObject());
@@ -135,7 +137,7 @@ exports.createPaymentOrder = async (req, res, next) => {
     if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: 'Booking ID is required'
+        message: 'Booking ID is required',
       });
     }
 

@@ -161,7 +161,7 @@ const priestProfileSchema = new mongoose.Schema({
     default: 1,
     min: 1,
     max: 6,
-},
+  },
   onboardingCompleted: {
     type: Boolean,
     default: false,
@@ -259,10 +259,14 @@ priestProfileSchema.pre('save', function (next) {
 priestProfileSchema.index({ location: '2dsphere' });
 
 priestProfileSchema.index({ verificationStatus: 1, isVerified: 1 });
-priestProfileSchema.index({ "currentAvailability.status": 1 });
-priestProfileSchema.index({ "ratings.average": -1 });
+priestProfileSchema.index({ 'currentAvailability.status': 1 });
+priestProfileSchema.index({ 'ratings.average': -1 });
 priestProfileSchema.index({ isVerified: 1 });
 // Compound index for the common "available verified priests by rating" query
-priestProfileSchema.index({ isVerified: 1, 'currentAvailability.status': 1, 'ratings.average': -1 });
+priestProfileSchema.index({
+  isVerified: 1,
+  'currentAvailability.status': 1,
+  'ratings.average': -1,
+});
 
 module.exports = mongoose.model('PriestProfile', priestProfileSchema);

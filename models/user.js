@@ -2,165 +2,167 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    trim: true,
-  },
-  email: {
-    type: String,
-    required: false,
-    unique: true,
-    sparse: true,
-    trim: true,
-    lowercase: true,
-  },
-  phone: {
-    type: String,
-    unique: true,
-    sparse: true,
-  },
-  password: {
-    type: String,
-    required: function () {
-      return !this.firebaseUid;
-    }, // Password not required if firebaseUid exists
-  },
-  firebaseUid: {
-    type: String,
-    sparse: true,
-    unique: true,
-  },
-  expoPushToken: {
-    type: String,
-    default: null,
-  },
-  userType: {
-    type: String,
-    enum: ['priest', 'devotee', 'admin'],
-    required: true,
-  },
-  isActive: {
-    type: Boolean,
-    default: true,
-  },
-  isVerified: {
-    type: Boolean,
-    default: false,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  },
-  // Security-related fields with sensible defaults
-  security: {
-    loginAttempts: { type: Number, default: 0 },
-    accountLocked: { type: Boolean, default: false },
-    lockedUntil: { type: Date, default: null },
-    lastPasswordChange: { type: Date, default: null },
-    twoFactorEnabled: { type: Boolean, default: false },
-    refreshTokens: { type: Array, default: [] },
-  },
-  // Notification preference defaults
-  notifications: {
+const userSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     email: {
-      bookingUpdates: { type: Boolean, default: true },
-      promotions: { type: Boolean, default: false },
-      reminders: { type: Boolean, default: true },
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true,
+      trim: true,
+      lowercase: true,
     },
-    push: {
-      bookingUpdates: { type: Boolean, default: true },
-      promotions: { type: Boolean, default: false },
-      reminders: { type: Boolean, default: true },
+    phone: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
-  },
-  // Address Management
-  addresses: [
-    {
-      type: {
-        type: String,
-        enum: ['Home', 'Work', 'Other'],
-        default: 'Home',
+    password: {
+      type: String,
+      required: function () {
+        return !this.firebaseUid;
+      }, // Password not required if firebaseUid exists
+    },
+    firebaseUid: {
+      type: String,
+      sparse: true,
+      unique: true,
+    },
+    expoPushToken: {
+      type: String,
+      default: null,
+    },
+    userType: {
+      type: String,
+      enum: ['priest', 'devotee', 'admin'],
+      required: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    // Security-related fields with sensible defaults
+    security: {
+      loginAttempts: { type: Number, default: 0 },
+      accountLocked: { type: Boolean, default: false },
+      lockedUntil: { type: Date, default: null },
+      lastPasswordChange: { type: Date, default: null },
+      twoFactorEnabled: { type: Boolean, default: false },
+      refreshTokens: { type: Array, default: [] },
+    },
+    // Notification preference defaults
+    notifications: {
+      email: {
+        bookingUpdates: { type: Boolean, default: true },
+        promotions: { type: Boolean, default: false },
+        reminders: { type: Boolean, default: true },
       },
-      houseNo: String,
-      street: String,
-      area: String,
-      city: String,
-      state: String,
-      zip: String,
-      pincode: String,
-      landmark: String,
-      isDefault: {
-        type: Boolean,
-        default: false,
+      push: {
+        bookingUpdates: { type: Boolean, default: true },
+        promotions: { type: Boolean, default: false },
+        reminders: { type: Boolean, default: true },
       },
     },
-  ],
-  // Languages spoken (for priests) — stored as plain name strings (e.g. 'Telugu').
-  // NOTE: not ObjectId refs to the Language collection; the whole stack (seed,
-  // search filter, signup) uses name strings.
-  languagesSpoken: {
-    type: [String],
-    default: [],
-  },
-  // Rating Statistics (Cached for performance)
-  rating: {
-    average: {
-      type: Number,
-      default: 0,
-      index: true,
+    // Address Management
+    addresses: [
+      {
+        type: {
+          type: String,
+          enum: ['Home', 'Work', 'Other'],
+          default: 'Home',
+        },
+        houseNo: String,
+        street: String,
+        area: String,
+        city: String,
+        state: String,
+        zip: String,
+        pincode: String,
+        landmark: String,
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+      },
+    ],
+    // Languages spoken (for priests) — stored as plain name strings (e.g. 'Telugu').
+    // NOTE: not ObjectId refs to the Language collection; the whole stack (seed,
+    // search filter, signup) uses name strings.
+    languagesSpoken: {
+      type: [String],
+      default: [],
     },
-    count: {
-      type: Number,
-      default: 0,
+    // Rating Statistics (Cached for performance)
+    rating: {
+      average: {
+        type: Number,
+        default: 0,
+        index: true,
+      },
+      count: {
+        type: Number,
+        default: 0,
+      },
+      breakdown: {
+        type: Map,
+        of: Number, // e.g., { "5": 12, "4": 3 }
+        default: {},
+      },
     },
-    breakdown: {
-      type: Map,
-      of: Number, // e.g., { "5": 12, "4": 3 }
-      default: {},
+    // Profile Picture (stored in AWS S3 — key is derived from userId at runtime)
+    profilePicture: {
+      url: { type: String, default: null },
+      uploadedAt: { type: Date, default: null },
+    },
+    // Family / Spiritual Details (for devotees)
+    familyDetails: {
+      gotra: { type: String, default: '' },
+      nakshatra: { type: String, default: '' },
+      rashi: { type: String, default: '' },
+    },
+    dateOfBirth: {
+      type: Date,
+      default: null,
+    },
+    devoteeReliability: {
+      score: { type: Number, default: 100 }, // Starts at 100
+      cancellationCount: { type: Number, default: 0 },
+      lateCancellationCount: { type: Number, default: 0 },
+      completedCount: { type: Number, default: 0 },
+    },
+    isTestRecord: {
+      type: Boolean,
+      default: false,
+    },
+    privacy: {
+      showPhone: { type: Boolean, default: false },
+      showEmail: { type: Boolean, default: false },
+      showLocation: { type: Boolean, default: true },
+      allowDirectMessages: { type: Boolean, default: true },
     },
   },
-  // Profile Picture (stored in AWS S3 — key is derived from userId at runtime)
-  profilePicture: {
-    url: { type: String, default: null },
-    uploadedAt: { type: Date, default: null },
-  },
-  // Family / Spiritual Details (for devotees)
-  familyDetails: {
-    gotra: { type: String, default: '' },
-    nakshatra: { type: String, default: '' },
-    rashi: { type: String, default: '' },
-  },
-  dateOfBirth: {
-    type: Date,
-    default: null,
-  },
-  devoteeReliability: {
-    score: { type: Number, default: 100 }, // Starts at 100
-    cancellationCount: { type: Number, default: 0 },
-    lateCancellationCount: { type: Number, default: 0 },
-    completedCount: { type: Number, default: 0 },
-  },
-  isTestRecord: {
-    type: Boolean,
-    default: false,
-  },
-  privacy: {
-    showPhone: { type: Boolean, default: false },
-    showEmail: { type: Boolean, default: false },
-    showLocation: { type: Boolean, default: true },
-    allowDirectMessages: { type: Boolean, default: true },
-  },
-}, {
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
-
+  {
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+);
 
 // Indexes for performance
 // NOTE: email and phone are already indexed via field-level `unique: true, sparse: true`.

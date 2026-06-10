@@ -83,7 +83,9 @@ exports.getCeremonyWithPriests = async (req, res, next) => {
       isVerified: true,
       'services.ceremonyId': ceremony._id,
     })
-      .select('userId services ratings experience religiousTradition currentAvailability profilePicture')
+      .select(
+        'userId services ratings experience religiousTradition currentAvailability profilePicture'
+      )
       .populate('userId', 'name profilePicture languagesSpoken')
       .lean();
 

@@ -5,7 +5,7 @@ const User = require('../models/user');
 const Booking = require('../models/booking');
 const Review = require('../models/review');
 
-// Security middleware to ensure these routes NEVER run in production 
+// Security middleware to ensure these routes NEVER run in production
 // and require a secret key in non-production environments.
 router.use((req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
@@ -127,19 +127,15 @@ router.post('/promote', async (req, res) => {
   try {
     const { email, phone, role = 'admin' } = req.body;
     const query = email ? { email } : { phone };
-    
-    const user = await User.findOneAndUpdate(
-      query,
-      { userType: role },
-      { new: true }
-    );
 
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const user = await User.findOneAndUpdate(query, { userType: role }, { new: true });
+
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     res.json({
       success: true,
       message: `User ${user.email || user.phone} promoted to ${role}`,
-      user: { id: user._id, email: user.email, userType: user.userType }
+      user: { id: user._id, email: user.email, userType: user.userType },
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -151,25 +147,25 @@ router.post('/verify-priest', async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
-    
-    const PriestProfile = require("../models/priestProfile"); // Ensure imported
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const PriestProfile = require('../models/priestProfile'); // Ensure imported
     const profile = await PriestProfile.findOneAndUpdate(
       { userId: user._id },
-      { 
-        verificationStatus: 'approved', 
+      {
+        verificationStatus: 'approved',
         isVerified: true,
-        'currentAvailability.status': 'available' 
+        'currentAvailability.status': 'available',
       },
       { new: true }
     );
-    
+
     await User.findByIdAndUpdate(user._id, { isVerified: true });
-    
-    res.json({ 
-      success: true, 
-      message: `Priest ${email} verified successfully`, 
-      profile 
+
+    res.json({
+      success: true,
+      message: `Priest ${email} verified successfully`,
+      profile,
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -4,7 +4,7 @@ const rateLimit = require('express-rate-limit');
 const authController = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
-const { sendOtpRules, verifyOtpRules } = require('../validators/authValidators')
+const { sendOtpRules, verifyOtpRules } = require('../validators/authValidators');
 
 const router = express.Router();
 
@@ -35,4 +35,3 @@ if (process.env.OTP_ENABLED === 'true') {
 router.post('/push-token', protect, authController.savePushToken);
 
 module.exports = router;
-

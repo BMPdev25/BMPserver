@@ -40,7 +40,7 @@ exports.getAllPriests = async (req, res, next) => {
 // Search for priests
 exports.searchPriests = async (req, res, next) => {
   try {
-    const { ceremony, city, date, religion, minRating, page = 1, limit = 10 } = req.query;
+    const { ceremony, city, religion, minRating, page = 1, limit = 10 } = req.query;
 
     // Build query filter
     const filter = {};
@@ -50,8 +50,9 @@ exports.searchPriests = async (req, res, next) => {
     if (ceremony) {
       preQueries.push(
         Ceremony.findOne({ name: new RegExp(ceremony, 'i'), isActive: true })
-          .select('_id').lean()
-          .then(doc => {
+          .select('_id')
+          .lean()
+          .then((doc) => {
             if (doc) filter['services.ceremonyId'] = doc._id;
             return !!doc;
           })
@@ -66,15 +67,13 @@ exports.searchPriests = async (req, res, next) => {
     // 3. Search Term Lookup (Name)
     if (req.query.search) {
       preQueries.push(
-        User.find({ name: new RegExp(req.query.search, "i") })
-          .select('_id').lean()
-          .then(users => {
-            const userIds = users.map(u => u._id);
-            const searchRegex = new RegExp(req.query.search, "i");
-            filter.$or = [
-              { userId: { $in: userIds } },
-              { description: searchRegex }
-            ];
+        User.find({ name: new RegExp(req.query.search, 'i') })
+          .select('_id')
+          .lean()
+          .then((users) => {
+            const userIds = users.map((u) => u._id);
+            const searchRegex = new RegExp(req.query.search, 'i');
+            filter.$or = [{ userId: { $in: userIds } }, { description: searchRegex }];
             return true;
           })
       );
@@ -82,7 +81,7 @@ exports.searchPriests = async (req, res, next) => {
 
     // Execute pre-queries in parallel
     const results = await Promise.all(preQueries);
-    
+
     // If a ceremony was requested but not found, return empty results immediately
     if (ceremony && results[0] === false) {
       return res.status(200).json({
@@ -109,10 +108,7 @@ exports.searchPriests = async (req, res, next) => {
     // Add verification criteria (Approved or Pending)
     // We combine this with existing $or if it exists, or create a new one
     const verificationCriteria = {
-      $or: [
-        { verificationStatus: { $in: ['approved', 'pending'] } },
-        { isVerified: true }
-      ]
+      $or: [{ verificationStatus: { $in: ['approved', 'pending'] } }, { isVerified: true }],
     };
 
     // If we already have an $or (from search term), we need to wrap everything in an $and
@@ -120,10 +116,7 @@ exports.searchPriests = async (req, res, next) => {
     let finalFilter = filter;
     if (filter.$or) {
       finalFilter = {
-        $and: [
-          filter,
-          verificationCriteria
-        ]
+        $and: [filter, verificationCriteria],
       };
     } else {
       Object.assign(finalFilter, verificationCriteria);
@@ -132,21 +125,23 @@ exports.searchPriests = async (req, res, next) => {
     // Get priest profiles with user details
     const [priests, total] = await Promise.all([
       PriestProfile.find(finalFilter)
-      .populate({
-        path: "userId",
-        select: "name profilePicture languagesSpoken",
-      })
-      .populate("services.ceremonyId", "name category duration")
-      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate")
-      .sort({ "ratings.average": -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean()
-      .exec(),
+        .populate({
+          path: 'userId',
+          select: 'name profilePicture languagesSpoken',
+        })
+        .populate('services.ceremonyId', 'name category duration')
+        .select(
+          'userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate'
+        )
+        .sort({ 'ratings.average': -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean()
+        .exec(),
       PriestProfile.countDocuments(finalFilter),
     ]);
 
-    const verifiedPriests = priests; 
+    const verifiedPriests = priests;
 
     // Format response
     const formattedPriests = verifiedPriests.map((priest) => ({

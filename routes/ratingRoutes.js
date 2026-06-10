@@ -12,36 +12,40 @@ router.use(protect);
 // Submit a new rating
 router.post('/', submitRatingRules, validate, async (req, res, next) => {
   try {
-    const { bookingId, priestId, rating, categories, 
-            review, ceremonyType, ceremonyDate } = req.body;
-    
+    const { bookingId, priestId, rating, categories, review, ceremonyType, ceremonyDate } =
+      req.body;
+
     // Check not already rated
-    const existing = await Rating.findOne({ 
-      bookingId, userId: req.user.id 
+    const existing = await Rating.findOne({
+      bookingId,
+      userId: req.user.id,
     });
     if (existing) {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'Already rated this booking' 
+      return res.status(409).json({
+        success: false,
+        message: 'Already rated this booking',
       });
     }
 
     const newRating = await Rating.create({
-      bookingId, priestId,
+      bookingId,
+      priestId,
       userId: req.user.id,
-      rating, categories, review,
-      ceremonyType, ceremonyDate
+      rating,
+      categories,
+      review,
+      ceremonyType,
+      ceremonyDate,
     });
 
     // Update PriestProfile ratings aggregate
     const allRatings = await Rating.find({ priestId });
-    const avg = allRatings.reduce((sum, r) => sum + r.rating, 0) 
-                / allRatings.length;
+    const avg = allRatings.reduce((sum, r) => sum + r.rating, 0) / allRatings.length;
     await PriestProfile.findOneAndUpdate(
       { userId: priestId },
-      { 
+      {
         'ratings.average': Math.round(avg * 10) / 10,
-        'ratings.count': allRatings.length 
+        'ratings.count': allRatings.length,
       }
     );
 
@@ -54,13 +58,13 @@ router.post('/', submitRatingRules, validate, async (req, res, next) => {
 // Check if a booking has been rated
 router.get('/booking/:bookingId', async (req, res, next) => {
   try {
-    const rating = await Rating.findOne({ 
-      bookingId: req.params.bookingId, 
-      userId: req.user.id 
+    const rating = await Rating.findOne({
+      bookingId: req.params.bookingId,
+      userId: req.user.id,
     });
-    res.status(200).json({ 
-      success: true, 
-      data: rating || null 
+    res.status(200).json({
+      success: true,
+      data: rating || null,
     });
   } catch (error) {
     next(error);

@@ -1,6 +1,5 @@
 // controllers/searchController.js
 const User = require('../models/user');
-const PriestProfile = require('../models/priestProfile');
 const Ceremony = require('../models/ceremony');
 
 // Universal search function

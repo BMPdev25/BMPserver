@@ -162,7 +162,9 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
   const total = await Booking.countDocuments(query);
 
   let bookings = await Booking.find(query)
-    .select('ceremonyType date startTime endTime status paymentStatus totalAmount basePrice platformFee location devoteeId priestId paymentDetails.receiptNumber createdAt updatedAt')
+    .select(
+      'ceremonyType date startTime endTime status paymentStatus totalAmount basePrice platformFee location devoteeId priestId paymentDetails.receiptNumber createdAt updatedAt'
+    )
     .populate('devoteeId', 'name profilePicture createdAt')
     .populate('priestId', 'name profilePicture')
     .sort({ createdAt: -1 })
@@ -268,7 +270,8 @@ const getBookingDetails = async (bookingId, userId) => {
 };
 
 const createBooking = async (devoteeId, bookingData) => {
-  const { priestId, ceremonyType, ceremonyId, date, startTime, endTime, location, notes } = bookingData;
+  const { priestId, ceremonyType, ceremonyId, date, startTime, endTime, location, notes } =
+    bookingData;
   const { isScheduledWindow } = require('../utils/dateWindows');
 
   // ENFORCE: scheduled bookings are for day+3 onwards. Dates within the instant
@@ -277,7 +280,7 @@ const createBooking = async (devoteeId, bookingData) => {
   if (!isScheduledWindow(date)) {
     const error = new Error(
       'This date is within the instant booking window. Please use instant booking ' +
-      'for today, tomorrow, and the day after.'
+        'for today, tomorrow, and the day after.'
     );
     error.statusCode = 400;
     error.code = 'USE_INSTANT_WINDOW';
@@ -394,16 +397,13 @@ const createBooking = async (devoteeId, bookingData) => {
   ]);
 
   // Notify priest of new request
-  await pushService.notifyPriestNewRequest(
-    booking.priestId._id || booking.priestId,
-    booking
-  )
+  await pushService.notifyPriestNewRequest(booking.priestId._id || booking.priestId, booking);
 
   return booking;
 };
 
 // Instant booking lifecycle timings.
-const INSTANT_TTL_MS = 10 * 60 * 1000;       // searching expires after 10 min
+const INSTANT_TTL_MS = 10 * 60 * 1000; // searching expires after 10 min
 const INSTANT_HEAD_START_MS = 3 * 60 * 1000; // preferred priest's 3-min lead
 
 /**
@@ -424,7 +424,7 @@ const createInstantBooking = async (devoteeId, bookingData) => {
   if (!isInstantWindow(date)) {
     const error = new Error(
       'Instant booking is only available for today, tomorrow, and the day after. ' +
-      'For later dates, please choose a specific pandit.'
+        'For later dates, please choose a specific pandit.'
     );
     error.statusCode = 400;
     error.code = 'NOT_INSTANT_WINDOW';
@@ -535,9 +535,8 @@ const broadcastInstantBooking = async (booking, options = {}) => {
   const priestUserIds = availablePriests.map((p) => p.userId.toString());
 
   const notifyPriest = async (priestUserId) => {
-    const socketId = userSockets && typeof userSockets.get === 'function'
-      ? userSockets.get(priestUserId)
-      : null;
+    const socketId =
+      userSockets && typeof userSockets.get === 'function' ? userSockets.get(priestUserId) : null;
     if (socketId && io) {
       io.to(socketId).emit('new_instant_request', {
         bookingId: booking._id,
@@ -590,7 +589,9 @@ const broadcastInstantBooking = async (booking, options = {}) => {
  */
 const getInstantAvailable = async ({ limit = 20 } = {}) => {
   const bookings = await Booking.find({ status: 'searching', bookingType: 'instant' })
-    .select('ceremonyType date startTime endTime basePrice totalAmount location devoteeId status bookingType createdAt')
+    .select(
+      'ceremonyType date startTime endTime basePrice totalAmount location devoteeId status bookingType createdAt'
+    )
     .populate('devoteeId', 'name profilePicture createdAt')
     .sort({ createdAt: -1 })
     .limit(parseInt(limit))
@@ -638,7 +639,9 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     booking.bookingType === 'instant' &&
     booking.paymentStatus !== 'completed'
   ) {
-    const error = new Error('This instant booking is awaiting devotee payment and cannot be confirmed manually.');
+    const error = new Error(
+      'This instant booking is awaiting devotee payment and cannot be confirmed manually.'
+    );
     error.statusCode = 400;
     throw error;
   }
@@ -682,10 +685,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   if (['arrived', 'in_progress'].includes(status)) {
     // Compare in IST so a dawn ceremony can be actioned from IST midnight onward,
     // not blocked until UTC catches up to the same calendar day.
-    if (
-      process.env.NODE_ENV !== 'test' &&
-      istDateStr(new Date()) < istDateStr(booking.date)
-    ) {
+    if (process.env.NODE_ENV !== 'test' && istDateStr(new Date()) < istDateStr(booking.date)) {
       const error = new Error(
         'Operation can only be performed on the scheduled day of the booking'
       );
@@ -715,7 +715,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     await pushService.notifyDevoteeBookingConfirmed(
       booking.devoteeId._id || booking.devoteeId,
       booking
-    )
+    );
   }
 
   if (status === 'cancelled') {
@@ -725,7 +725,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     await pushService.notifyDevoteeCancelledByPriest(
       booking.devoteeId._id || booking.devoteeId,
       booking
-    )
+    );
   }
 
   if (status === 'rejected') {
@@ -734,7 +734,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     await pushService.notifyDevoteeBookingDeclined(
       booking.devoteeId._id || booking.devoteeId,
       booking
-    )
+    );
   }
 
   // Auto-cancel concurrent pending requests if confirmed
@@ -798,7 +798,7 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
       // ATOMIC gate: unique index on (bookingId, type='credit_for_booking') prevents
       // double-credit even under concurrent requests. If this throws error.code 11000,
       // another request already processed this booking.
-      const transaction = await Transaction.create({
+      await Transaction.create({
         priestId: booking.priestId,
         walletId: wallet._id,
         bookingId: booking._id,
@@ -973,9 +973,7 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     timesOverlap(booking.startTime, booking.endTime, other.startTime, other.endTime)
   );
   if (overlaps) {
-    const error = new Error(
-      'You already have a booking that overlaps this time.'
-    );
+    const error = new Error('You already have a booking that overlaps this time.');
     error.statusCode = 409;
     throw error;
   }
@@ -1138,7 +1136,10 @@ const createPaymentOrder = async (bookingId, userId) => {
       );
     } catch (fetchErr) {
       if (fetchErr.statusCode === 409) throw fetchErr;
-      console.warn('[Payment] Could not fetch existing order — creating new one:', fetchErr.message);
+      console.warn(
+        '[Payment] Could not fetch existing order — creating new one:',
+        fetchErr.message
+      );
     }
   }
 

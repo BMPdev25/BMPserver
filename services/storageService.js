@@ -1,4 +1,9 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const s3 = new S3Client({
@@ -19,9 +24,7 @@ function publicUrl(key) {
 }
 
 function s3Error(operation, key, cause) {
-  const err = new Error(
-    `S3 ${operation} failed for key "${key}": ${cause.message}`
-  );
+  const err = new Error(`S3 ${operation} failed for key "${key}": ${cause.message}`);
   err.statusCode = 500;
   err.cause = cause;
   return err;
@@ -29,12 +32,14 @@ function s3Error(operation, key, cause) {
 
 async function uploadPublicFile(buffer, key, mimetype) {
   try {
-    await s3.send(new PutObjectCommand({
-      Bucket: publicBucket(),
-      Key: key,
-      Body: buffer,
-      ContentType: mimetype,
-    }));
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: publicBucket(),
+        Key: key,
+        Body: buffer,
+        ContentType: mimetype,
+      })
+    );
     return publicUrl(key);
   } catch (err) {
     throw s3Error('upload', key, err);
@@ -43,12 +48,14 @@ async function uploadPublicFile(buffer, key, mimetype) {
 
 async function uploadPrivateFile(buffer, key, mimetype) {
   try {
-    await s3.send(new PutObjectCommand({
-      Bucket: privateBucket(),
-      Key: key,
-      Body: buffer,
-      ContentType: mimetype,
-    }));
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: privateBucket(),
+        Key: key,
+        Body: buffer,
+        ContentType: mimetype,
+      })
+    );
     return key;
   } catch (err) {
     throw s3Error('upload', key, err);
@@ -65,17 +72,21 @@ async function getPresignedUrl(key, expiresInSeconds = 3600) {
 }
 
 async function deletePublicFile(key) {
-  await s3.send(new DeleteObjectCommand({
-    Bucket: publicBucket(),
-    Key: key,
-  }));
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: publicBucket(),
+      Key: key,
+    })
+  );
 }
 
 async function deletePrivateFile(key) {
-  await s3.send(new DeleteObjectCommand({
-    Bucket: privateBucket(),
-    Key: key,
-  }));
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: privateBucket(),
+      Key: key,
+    })
+  );
 }
 
 module.exports = {

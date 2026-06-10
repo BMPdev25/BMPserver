@@ -11,7 +11,7 @@ exports.protect = async (req, res, next) => {
       if (!user) return res.status(401).json({ message: 'Test user not found' });
       req.user = user;
       return next();
-    } catch (e) {
+    } catch {
       return res.status(401).json({ message: 'Invalid test user ID' });
     }
   }
@@ -34,10 +34,10 @@ exports.protect = async (req, res, next) => {
     // Wrap in a try-catch to differentiate token expiration from db errors
     let decodedToken;
     try {
-       decodedToken = await admin.auth().verifyIdToken(token);
+      decodedToken = await admin.auth().verifyIdToken(token);
     } catch (firebaseError) {
-       console.error('Firebase token verification error:', firebaseError.message);
-       return res.status(401).json({ message: 'Not authorized, invalid or expired Firebase token' });
+      console.error('Firebase token verification error:', firebaseError.message);
+      return res.status(401).json({ message: 'Not authorized, invalid or expired Firebase token' });
     }
 
     const firebaseUid = decodedToken.uid;
@@ -49,7 +49,9 @@ exports.protect = async (req, res, next) => {
       // NOTE: We do not fail here if they are hitting the /sync route, so we attach firebaseUser.
       // But typically we enforce the user exists. Let's attach both so controllers can decide.
       req.firebaseUser = decodedToken;
-      return res.status(401).json({ message: 'User profile not found. Please complete registration/sync.' });
+      return res
+        .status(401)
+        .json({ message: 'User profile not found. Please complete registration/sync.' });
     }
 
     // Add user to request object
@@ -78,7 +80,9 @@ exports.verifiedPriestOnly = async (req, res, next) => {
   }
   try {
     const PriestProfile = require('../models/priestProfile');
-    const profile = await PriestProfile.findOne({ userId: req.user._id }).select('isVerified').lean();
+    const profile = await PriestProfile.findOne({ userId: req.user._id })
+      .select('isVerified')
+      .lean();
     if (!profile || !profile.isVerified) {
       return res.status(403).json({ message: 'Priest account is pending admin verification' });
     }

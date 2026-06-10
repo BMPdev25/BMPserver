@@ -104,11 +104,11 @@ const sendReminder = async (userId, relatedId, title, message, targetRole) => {
 // Every day at 8:00 AM IST (2:30 AM UTC)
 const schedulePushReminders = () => {
   cron.schedule('30 2 * * *', async () => {
-    console.log('[Cron] Running ceremony reminder job...')
+    console.log('[Cron] Running ceremony reminder job...');
     try {
-      const tomorrow = new Date()
-      tomorrow.setDate(tomorrow.getDate() + 1)
-      const dateStr = tomorrow.toISOString().split('T')[0]
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateStr = tomorrow.toISOString().split('T')[0];
 
       const bookings = await Booking.find({
         date: {
@@ -116,21 +116,21 @@ const schedulePushReminders = () => {
           $lt: new Date(dateStr + 'T23:59:59.999Z'),
         },
         status: 'confirmed',
-      }).populate('devoteeId priestId', 'name')
+      }).populate('devoteeId priestId', 'name');
 
       for (const booking of bookings) {
         await pushService.notifyBothCeremonyReminder(
           booking.devoteeId._id,
           booking.priestId._id,
           booking
-        )
+        );
       }
-      console.log(`[Cron] Sent reminders for ${bookings.length} ceremonies.`)
+      console.log(`[Cron] Sent reminders for ${bookings.length} ceremonies.`);
     } catch (err) {
-      console.error('[Cron] Reminder job failed:', err.message)
+      console.error('[Cron] Reminder job failed:', err.message);
     }
-  })
-}
+  });
+};
 
 // Every 15 minutes — cancel bookings whose payment window expired before payment
 // was completed. Covers both 'pending' requests AND 'confirmed' bookings that a

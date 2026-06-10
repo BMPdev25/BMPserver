@@ -116,15 +116,29 @@ const seedAll = async () => {
     await mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' });
     console.log('Connected to MongoDB (bmp)');
 
-    // Reset Categories
-    await Category.deleteMany({});
-    await Category.insertMany(categories);
-    console.log('Categories seeded');
+    // Upsert Categories (keyed on name — matches the unique index, skips existing records)
+    let catInserted = 0;
+    for (const cat of categories) {
+      const result = await Category.updateOne(
+        { name: cat.name },
+        { $setOnInsert: cat },
+        { upsert: true }
+      );
+      if (result.upsertedCount) catInserted++;
+    }
+    console.log(`Categories seeded: ${catInserted} inserted, ${categories.length - catInserted} already existed`);
 
-    // Reset Ceremonies
-    await Ceremony.deleteMany({});
-    await Ceremony.insertMany(demoCeremonies);
-    console.log('Demo ceremonies seeded');
+    // Upsert Ceremonies (keyed on name — skips existing records)
+    let cerInserted = 0;
+    for (const ceremony of demoCeremonies) {
+      const result = await Ceremony.updateOne(
+        { name: ceremony.name },
+        { $setOnInsert: ceremony },
+        { upsert: true }
+      );
+      if (result.upsertedCount) cerInserted++;
+    }
+    console.log(`Demo ceremonies seeded: ${cerInserted} inserted, ${demoCeremonies.length - cerInserted} already existed`);
 
     process.exit(0);
   } catch (error) {

@@ -1,8 +1,8 @@
-const { Expo } = require('expo-server-sdk')
-const User = require('../models/user')
-const Notification = require('../models/notification')
+const { Expo } = require('expo-server-sdk');
+const User = require('../models/user');
+const Notification = require('../models/notification');
 
-const expo = new Expo()
+const expo = new Expo();
 
 /**
  * Send a push notification to a single user.
@@ -25,12 +25,12 @@ async function sendToUser(userId, title, body, data = {}, type = 'booking') {
       targetRole: data.targetRole || 'devotee',
       relatedId: data.bookingId || null,
       read: false,
-    })
+    });
 
     // Get user's push token
-    const user = await User.findById(userId).select('expoPushToken')
-    if (!user?.expoPushToken) return  // No token — in-app only
-    if (!Expo.isExpoPushToken(user.expoPushToken)) return  // Invalid token
+    const user = await User.findById(userId).select('expoPushToken');
+    if (!user?.expoPushToken) return; // No token — in-app only
+    if (!Expo.isExpoPushToken(user.expoPushToken)) return; // Invalid token
 
     const message = {
       to: user.expoPushToken,
@@ -40,19 +40,19 @@ async function sendToUser(userId, title, body, data = {}, type = 'booking') {
       data,
       priority: 'high',
       channelId: 'default',
-    }
+    };
 
-    const chunks = expo.chunkPushNotifications([message])
+    const chunks = expo.chunkPushNotifications([message]);
     for (const chunk of chunks) {
       try {
-        await expo.sendPushNotificationsAsync(chunk)
+        await expo.sendPushNotificationsAsync(chunk);
       } catch (err) {
-        console.warn('[Push] Chunk send failed:', err.message)
+        console.warn('[Push] Chunk send failed:', err.message);
       }
     }
   } catch (err) {
     // Never throw — push failure must not break the booking flow
-    console.warn('[Push] sendToUser failed:', err.message)
+    console.warn('[Push] sendToUser failed:', err.message);
   }
 }
 
@@ -74,7 +74,7 @@ async function notifyPriestNewRequest(priestId, booking) {
       targetRole: 'priest',
     },
     'booking'
-  )
+  );
 }
 
 async function notifyDevoteeBookingConfirmed(devoteeId, booking) {
@@ -90,7 +90,7 @@ async function notifyDevoteeBookingConfirmed(devoteeId, booking) {
       targetRole: 'devotee',
     },
     'booking'
-  )
+  );
 }
 
 async function notifyDevoteeBookingDeclined(devoteeId, booking) {
@@ -105,7 +105,7 @@ async function notifyDevoteeBookingDeclined(devoteeId, booking) {
       targetRole: 'devotee',
     },
     'booking'
-  )
+  );
 }
 
 async function notifyPriestBookingCancelled(priestId, booking) {
@@ -121,22 +121,21 @@ async function notifyPriestBookingCancelled(priestId, booking) {
       targetRole: 'priest',
     },
     'booking'
-  )
+  );
 }
 
 async function notifyDevoteeCancelledByPriest(devoteeId, booking) {
   await sendToUser(
     devoteeId,
     'Booking Cancelled by Pandit',
-    `Your ${booking.ceremonyType} booking has been cancelled. ` +
-      `Please book another pandit.`,
+    `Your ${booking.ceremonyType} booking has been cancelled. ` + `Please book another pandit.`,
     {
       screen: 'BookingsTab',
       bookingId: booking._id.toString(),
       targetRole: 'devotee',
     },
     'booking'
-  )
+  );
 }
 
 async function notifyPriestPaymentCredited(priestId, booking, amount) {
@@ -151,13 +150,15 @@ async function notifyPriestPaymentCredited(priestId, booking, amount) {
       targetRole: 'priest',
     },
     'payment'
-  )
+  );
 }
 
 async function notifyBothCeremonyReminder(devoteeId, priestId, booking) {
   const dateStr = new Date(booking.date).toLocaleDateString('en-IN', {
-    weekday: 'long', day: 'numeric', month: 'long',
-  })
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
   await sendToUser(
     devoteeId,
     'Ceremony Tomorrow 🕉️',
@@ -168,7 +169,7 @@ async function notifyBothCeremonyReminder(devoteeId, priestId, booking) {
       targetRole: 'devotee',
     },
     'booking'
-  )
+  );
   await sendToUser(
     priestId,
     'Ceremony Tomorrow',
@@ -179,7 +180,7 @@ async function notifyBothCeremonyReminder(devoteeId, priestId, booking) {
       targetRole: 'priest',
     },
     'booking'
-  )
+  );
 }
 
 module.exports = {
@@ -191,4 +192,4 @@ module.exports = {
   notifyDevoteeCancelledByPriest,
   notifyPriestPaymentCredited,
   notifyBothCeremonyReminder,
-}
+};

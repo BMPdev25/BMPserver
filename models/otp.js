@@ -1,4 +1,4 @@
-const mongoose = require('mongoose')
+const mongoose = require('mongoose');
 
 const otpSchema = new mongoose.Schema({
   phone: {
@@ -19,6 +19,6 @@ const otpSchema = new mongoose.Schema({
     default: Date.now,
     expires: 600, // TTL: auto-delete after 10 minutes
   },
-})
+});
 
-module.exports = mongoose.model('Otp', otpSchema)
+module.exports = mongoose.model('Otp', otpSchema);

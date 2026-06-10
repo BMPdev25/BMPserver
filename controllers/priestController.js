@@ -120,7 +120,6 @@ exports.requestWithdrawal = (req, res, next) => walletController.requestWithdraw
 // Get transactions history
 exports.getTransactions = async (req, res, next) => {
   try {
-    const { type, limit } = req.query;
     const { transactions } = await priestService.getEarnings(req.user.id);
     res.status(200).json(transactions);
   } catch (error) {
@@ -260,10 +259,10 @@ exports.getAvailablePujaris = async (req, res, next) => {
 
     // Sort mapping ($geoWithin does not produce distance metadata, so distance sort is unavailable)
     const sortMap = {
-      rating:     { 'ratings.average': -1 },
+      rating: { 'ratings.average': -1 },
       experience: { experience: -1 },
-      newest:     { createdAt: -1 },
-      price_asc:  { 'services.price': 1 },
+      newest: { createdAt: -1 },
+      price_asc: { 'services.price': 1 },
       price_desc: { 'services.price': -1 },
     };
     const sortQuery = sortMap[sort] || sortMap.rating;
@@ -278,7 +277,9 @@ exports.getAvailablePujaris = async (req, res, next) => {
         .sort(sortQuery)
         .skip(skip)
         .limit(limitNum)
-        .select('userId services ratings currentAvailability location experience religiousTradition specializations verificationStatus profilePicture')
+        .select(
+          'userId services ratings currentAvailability location experience religiousTradition specializations verificationStatus profilePicture'
+        )
         .populate('userId', 'name profilePicture languagesSpoken')
         .populate('services.ceremonyId', 'name category duration')
         .lean(),
@@ -293,9 +294,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
       primarySpecialization: p.specializations?.[0]?.name || '',
       rating: p.ratings?.average || 0,
       reviewCount: p.ratings?.count || 0,
-      startingPrice: p.services?.length
-        ? Math.min(...p.services.map((s) => s.price))
-        : 0,
+      startingPrice: p.services?.length ? Math.min(...p.services.map((s) => s.price)) : 0,
       experienceYears: p.experience || 0,
       services: p.services || [],
       verificationStatus: p.verificationStatus,
@@ -354,7 +353,12 @@ exports.getPendingActions = async (req, res, next) => {
 };
 
 // Upload document
-const ALLOWED_DOCUMENT_TYPES = ['profile_picture', 'government_id', 'religious_certificate', 'other'];
+const ALLOWED_DOCUMENT_TYPES = [
+  'profile_picture',
+  'government_id',
+  'religious_certificate',
+  'other',
+];
 
 exports.uploadDocument = async (req, res, next) => {
   try {
@@ -415,9 +419,7 @@ exports.submitVerification = async (req, res, next) => {
 exports.getDocument = async (req, res, next) => {
   try {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
-    const doc = profile?.verificationDocuments.find(
-      (d) => d.type === req.params.documentType
-    );
+    const doc = profile?.verificationDocuments.find((d) => d.type === req.params.documentType);
     if (!doc?.url) {
       return res.status(404).json({ success: false, message: 'Document not found' });
     }
@@ -446,17 +448,19 @@ exports.acceptInstantBooking = async (req, res, next) => {
 exports.getPublicProfile = async (req, res, next) => {
   try {
     const { priestProfileId } = req.params;
-    
+
     const profile = await PriestProfile.findById(priestProfileId)
-      .select('userId services ratings experience description religiousTradition availability location currentAvailability isVerified verificationStatus specializations serviceRadiusKm ceremonyCount profilePicture')
+      .select(
+        'userId services ratings experience description religiousTradition availability location currentAvailability isVerified verificationStatus specializations serviceRadiusKm ceremonyCount profilePicture'
+      )
       .populate('userId', 'name profilePicture languagesSpoken')
       .populate('services.ceremonyId', 'name description')
       .lean();
-    
+
     if (!profile || !profile.isVerified) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Pandit profile not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Pandit profile not found',
       });
     }
 
@@ -499,14 +503,12 @@ exports.getPublicReviews = async (req, res, next) => {
     const Rating = require('../models/rating');
 
     // Step 1: resolve PriestProfile → User._id
-    const profile = await PriestProfile
-      .findById(priestProfileId)
-      .select('userId')
-      .lean();
+    const profile = await PriestProfile.findById(priestProfileId).select('userId').lean();
 
     if (!profile) {
-      return res.status(404).json({ 
-        success: false, message: 'Profile not found' 
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found',
       });
     }
 

@@ -32,7 +32,9 @@ async function sendOtp(phone, otp) {
     return { success: true, data: response.data };
   } catch (err) {
     console.error('[SMS] Failed to send OTP:', err.message);
-    throw new Error('Failed to send OTP. Please check your phone number and try again.');
+    throw new Error('Failed to send OTP. Please check your phone number and try again.', {
+      cause: err,
+    });
   }
 }
 

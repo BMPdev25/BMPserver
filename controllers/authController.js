@@ -25,7 +25,14 @@ exports.firebaseSync = async (req, res) => {
     const { uid, email, phone_number } = decodedToken;
 
     // Fields passed during first registration (can be empty on subsequent logins)
-    const { userType: rawUserType, name, pushToken, languagesSpoken, experience, description } = req.body;
+    const {
+      userType: rawUserType,
+      name,
+      pushToken,
+      languagesSpoken,
+      experience,
+      description,
+    } = req.body;
     const ALLOWED_USER_TYPES = ['devotee', 'priest'];
     const userType = ALLOWED_USER_TYPES.includes(rawUserType) ? rawUserType : null;
 
@@ -63,50 +70,53 @@ exports.firebaseSync = async (req, res) => {
 
     // New Registration Flow
     if (!user) {
-       // userType validation — return 404 so the client knows to redirect to registration
-       if (!userType) {
-         return res.status(404).json({ message: 'No account found. Please register to continue.' });
-       }
-       if (userType === 'priest' && (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)) {
-         return res.status(400).json({ message: 'Priests must select at least one language.' });
-       }
-       user = new User({
-         name: name || decodedToken.name || 'New User',
-         email: email || undefined,
-         // Use undefined (not null) so the unique+sparse index skips phoneless
-         // (e.g. Google/email) signups — null would be indexed and collide.
-         phone: phone_number || undefined,
-         firebaseUid: uid,
-         userType: userType,
-         expoPushToken: pushToken || null,
-         ...(userType === 'priest' && languagesSpoken ? { languagesSpoken } : {})
-       });
-       await user.save();
+      // userType validation — return 404 so the client knows to redirect to registration
+      if (!userType) {
+        return res.status(404).json({ message: 'No account found. Please register to continue.' });
+      }
+      if (
+        userType === 'priest' &&
+        (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)
+      ) {
+        return res.status(400).json({ message: 'Priests must select at least one language.' });
+      }
+      user = new User({
+        name: name || decodedToken.name || 'New User',
+        email: email || undefined,
+        // Use undefined (not null) so the unique+sparse index skips phoneless
+        // (e.g. Google/email) signups — null would be indexed and collide.
+        phone: phone_number || undefined,
+        firebaseUid: uid,
+        userType: userType,
+        expoPushToken: pushToken || null,
+        ...(userType === 'priest' && languagesSpoken ? { languagesSpoken } : {}),
+      });
+      await user.save();
 
-       // Handle Profiles
-       if (userType === 'priest') {
-          const PriestProfile = require('../models/priestProfile');
-          await PriestProfile.create({
-              userId: user._id,
-              isVerified: false,
-              verificationStatus: 'incomplete',
-              experience: experience || 0,
-              description: description || '',
-              // Denormalize languages so the priest is searchable immediately
-              languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
-          });
-       } else if (userType === 'devotee') {
-          const DevoteeProfile = require('../models/devoteeProfile');
-          await DevoteeProfile.create({ userId: user._id, isVerified: true });
-       }
+      // Handle Profiles
+      if (userType === 'priest') {
+        const PriestProfile = require('../models/priestProfile');
+        await PriestProfile.create({
+          userId: user._id,
+          isVerified: false,
+          verificationStatus: 'incomplete',
+          experience: experience || 0,
+          description: description || '',
+          // Denormalize languages so the priest is searchable immediately
+          languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
+        });
+      } else if (userType === 'devotee') {
+        const DevoteeProfile = require('../models/devoteeProfile');
+        await DevoteeProfile.create({ userId: user._id, isVerified: true });
+      }
     } else {
-        // Update any basic login info on subsequent logins (like pushTokens)
-        let isModified = false;
-        if (pushToken && user.expoPushToken !== pushToken) {
-            user.expoPushToken = pushToken;
-            isModified = true;
-        }
-        if (isModified) await user.save();
+      // Update any basic login info on subsequent logins (like pushTokens)
+      let isModified = false;
+      if (pushToken && user.expoPushToken !== pushToken) {
+        user.expoPushToken = pushToken;
+        isModified = true;
+      }
+      if (isModified) await user.save();
     }
 
     // Determine profile completion and verification state.
@@ -198,7 +208,7 @@ exports.sendOtp = async (req, res) => {
     }
 
     // Normalise: strip spaces/dashes, ensure E.164
-    const normalised = phone.replace(/[\s\-]/g, '');
+    const normalised = phone.replace(/[\s-]/g, '');
     const e164 = normalised.startsWith('+') ? normalised : `+91${normalised.replace(/^0+/, '')}`;
 
     if (!/^\+[1-9]\d{7,14}$/.test(e164)) {
@@ -240,7 +250,15 @@ exports.sendOtp = async (req, res) => {
 // Verify OTP → return Firebase custom token
 exports.verifyOtp = async (req, res) => {
   try {
-    const { phone, otp, userType: rawUserType, name, languagesSpoken, experience, description } = req.body;
+    const {
+      phone,
+      otp,
+      userType: rawUserType,
+      name,
+      languagesSpoken,
+      experience,
+      description,
+    } = req.body;
     const ALLOWED_USER_TYPES = ['devotee', 'priest'];
 
     if (rawUserType && !ALLOWED_USER_TYPES.includes(rawUserType)) {
@@ -252,7 +270,7 @@ exports.verifyOtp = async (req, res) => {
       return res.status(400).json({ message: 'Phone number and OTP are required.' });
     }
 
-    const normalised = phone.replace(/[\s\-]/g, '');
+    const normalised = phone.replace(/[\s-]/g, '');
     const e164 = normalised.startsWith('+') ? normalised : `+91${normalised.replace(/^0+/, '')}`;
 
     const record = await OtpRecord.findOne({ phone: e164 });
@@ -279,7 +297,9 @@ exports.verifyOtp = async (req, res) => {
 
       if (!updated || updated.attempts >= MAX_ATTEMPTS) {
         await OtpRecord.deleteOne({ phone: e164 });
-        return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new OTP.' });
+        return res
+          .status(429)
+          .json({ message: 'Too many incorrect attempts. Please request a new OTP.' });
       }
 
       const remaining = MAX_ATTEMPTS - updated.attempts;
@@ -296,10 +316,15 @@ exports.verifyOtp = async (req, res) => {
 
     if (!user) {
       if (!userType) {
-        return res.status(400).json({ message: 'userType is required for new registration. Must be "devotee" or "priest".' });
+        return res.status(400).json({
+          message: 'userType is required for new registration. Must be "devotee" or "priest".',
+        });
       }
       // Mirror firebaseSync: priests must select at least one language at registration
-      if (userType === 'priest' && (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)) {
+      if (
+        userType === 'priest' &&
+        (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)
+      ) {
         return res.status(400).json({ message: 'Priests must select at least one language.' });
       }
       const type = userType;

@@ -4,7 +4,6 @@ const User = require('../models/user');
 const Booking = require('../models/booking');
 const Transaction = require('../models/transaction');
 const Notification = require('../models/notification');
-const Review = require('../models/review');
 const { getOrCreateWallet } = require('../services/commissionEngine');
 const { uploadPublicFile, uploadPrivateFile, deletePrivateFile } = require('./storageService');
 const { priestProfilePicKey, priestDocumentKey } = require('../utils/s3Keys');
@@ -115,7 +114,9 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: currentMonth },
-  }).select('amount').lean();
+  })
+    .select('amount')
+    .lean();
   const thisMonthEarnings = thisMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const lastMonthTxns = await Transaction.find({
@@ -123,7 +124,9 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: lastMonth, $lte: lastMonthEnd },
-  }).select('amount').lean();
+  })
+    .select('amount')
+    .lean();
   const lastMonthEarnings = lastMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const growthPercentage =
@@ -217,7 +220,6 @@ const uploadDocument = async (userId, file, documentType) => {
     const key = priestProfilePicKey(userId.toString());
     const url = await uploadPublicFile(file.buffer, key, file.mimetype);
     profile.profilePicture = url;
-
   } else {
     // Private bucket — store S3 key, presign at read time
     const key = priestDocumentKey(userId.toString(), documentType, file.mimetype);
@@ -252,19 +254,37 @@ const getProfileCompletion = async (userId) => {
   const fields = [
     // email is optional (phone/OTP signups have no email), so accept either contact method
     { name: 'basicInfo', check: () => user && user.name && (user.email || user.phone) },
-    { name: 'languages', check: () => user && user.languagesSpoken && user.languagesSpoken.length > 0 },
+    {
+      name: 'languages',
+      check: () => user && user.languagesSpoken && user.languagesSpoken.length > 0,
+    },
     { name: 'description', check: () => profile.description && profile.description.length > 0 },
-    { name: 'experience', check: () => profile.experience !== undefined && profile.experience !== null },
-    { name: 'profilePicture', check: () => profile.profilePicture && profile.profilePicture.length > 0 },
+    {
+      name: 'experience',
+      check: () => profile.experience !== undefined && profile.experience !== null,
+    },
+    {
+      name: 'profilePicture',
+      check: () => profile.profilePicture && profile.profilePicture.length > 0,
+    },
     { name: 'services', check: () => profile.services && profile.services.length > 0 },
-    { name: 'location', check: () => profile.location && profile.location.coordinates && (profile.location.coordinates[0] !== 0 || profile.location.coordinates[1] !== 0) },
-    { name: 'documents', check: () => profile.verificationDocuments && profile.verificationDocuments.length > 0 },
+    {
+      name: 'location',
+      check: () =>
+        profile.location &&
+        profile.location.coordinates &&
+        (profile.location.coordinates[0] !== 0 || profile.location.coordinates[1] !== 0),
+    },
+    {
+      name: 'documents',
+      check: () => profile.verificationDocuments && profile.verificationDocuments.length > 0,
+    },
   ];
 
   const completedFields = [];
   const missingFields = [];
 
-  fields.forEach(field => {
+  fields.forEach((field) => {
     if (field.check()) {
       completedFields.push(field.name);
     } else {
@@ -281,7 +301,8 @@ const getProfileCompletion = async (userId) => {
     completedFields,
     missingFields,
     isVerified: profile.isVerified || false,
-    canAcceptRequests: (profile.isVerified || false) && profile.services && profile.services.length > 0
+    canAcceptRequests:
+      (profile.isVerified || false) && profile.services && profile.services.length > 0,
   };
 };
 

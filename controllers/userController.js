@@ -148,7 +148,7 @@ exports.updateNotificationPreferences = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
     }
 
@@ -171,39 +171,39 @@ exports.updateNotificationPreferences = async (req, res) => {
       success: true,
       message: 'Notification preferences updated successfully',
       data: {
-        notifications: user.notifications
-      }
+        notifications: user.notifications,
+      },
     });
   } catch (error) {
     console.error('Update notification preferences error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update notification preferences',
-      error: error.message
+      error: error.message,
     });
   }
 };
 
 exports.savePushToken = async (req, res, next) => {
   try {
-    const { token } = req.body
+    const { token } = req.body;
     if (!token) {
       return res.status(400).json({
         success: false,
         message: 'Push token is required',
-      })
+      });
     }
     await User.findByIdAndUpdate(req.user.id, {
       expoPushToken: token,
-    })
+    });
     res.status(200).json({
       success: true,
       message: 'Push token saved',
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-}
+};
 
 // Delete account
 exports.deleteAccount = async (req, res, next) => {
