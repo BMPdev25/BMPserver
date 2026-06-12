@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
 const Category = require('../models/ceremonyCategory');
@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const categories = [
   { name: 'Weddings', slug: 'wedding', icon: 'heart-outline', color: '#FF6B6B', order: 1 },
   { name: 'Pujas', slug: 'puja', icon: 'flower-outline', color: '#FF9933', order: 2 },
+  { name: 'Homams', slug: 'homam', icon: 'flame-outline', color: '#FF6B35', order: 3 },
   { name: 'Housewarming', slug: 'housewarming', icon: 'home-outline', color: '#4ECDC4', order: 3 },
   {
     name: 'Birth & Naming',
@@ -116,7 +117,7 @@ const seedAll = async () => {
     await mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' });
     console.log('Connected to MongoDB (bmp)');
 
-    // Upsert Categories (keyed on name — matches the unique index, skips existing records)
+    // Upsert Categories (keyed on name â€” matches the unique index, skips existing records)
     let catInserted = 0;
     for (const cat of categories) {
       const result = await Category.updateOne(
@@ -128,7 +129,7 @@ const seedAll = async () => {
     }
     console.log(`Categories seeded: ${catInserted} inserted, ${categories.length - catInserted} already existed`);
 
-    // Upsert Ceremonies (keyed on name — skips existing records)
+    // Upsert Ceremonies (keyed on name â€” skips existing records)
     let cerInserted = 0;
     for (const ceremony of demoCeremonies) {
       const result = await Ceremony.updateOne(
@@ -148,3 +149,4 @@ const seedAll = async () => {
 };
 
 seedAll();
+

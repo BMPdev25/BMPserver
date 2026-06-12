@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+﻿const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 
@@ -32,11 +32,7 @@ const ceremoniesData = [
     },
     religiousTraditions: ['Hindu'],
     images: [
-      {
-        url: 'http://192.168.29.44:5000/public/images/satyanarayan.jpg',
-        alt: 'Satyanarayan Puja',
-        isPrimary: true,
-      },
+      { url: 'http://192.168.29.44:5000/public/images/satyanarayan.jpg', alt: 'Satyanarayan Puja', isPrimary: true },
     ],
   },
   {
@@ -55,11 +51,7 @@ const ceremoniesData = [
     },
     religiousTraditions: ['Hindu'],
     images: [
-      {
-        url: 'http://192.168.29.44:5000/public/images/grihapravesh.jpg',
-        alt: 'Griha Pravesh',
-        isPrimary: true,
-      },
+      { url: 'http://192.168.29.44:5000/public/images/grihapravesh.jpg', alt: 'Griha Pravesh', isPrimary: true },
     ],
   },
   {
@@ -77,12 +69,42 @@ const ceremoniesData = [
     },
     religiousTraditions: ['Hindu'],
     images: [
-      {
-        url: 'http://192.168.29.44:5000/public/images/ganapati.jpg',
-        alt: 'Ganapati',
-        isPrimary: true,
-      },
+      { url: 'http://192.168.29.44:5000/public/images/ganapati.jpg', alt: 'Ganapati', isPrimary: true },
     ],
+  },
+  {
+    name: 'Ganapati Homam',
+    description:
+      'A Vedic fire ritual (havan) dedicated to Lord Ganesha for removing obstacles and bestowing success. ' +
+      'Performed with chanting of Ganapati Atharvashirsha and systematic ahuti offerings.',
+    category: 'homam',
+    subcategory: 'ganapati',
+    duration: { typical: 120, minimum: 90, maximum: 150 },
+    pricing: { basePrice: 4100, priceRange: { min: 4100, max: 9100 } },
+    requirements: {
+      materials: [
+        { name: 'Havan samagri (mixed herbs)', quantity: '500g' },
+        { name: 'Ghee (clarified butter)', quantity: '250g' },
+        { name: 'Durva grass', quantity: '1 bunch' },
+        { name: 'Modak', quantity: '21' },
+        { name: 'Red flowers', quantity: '1 garland' },
+      ],
+      specialInstructions:
+        'Participants should fast or eat a light meal. The ceremony space must be ventilated.',
+    },
+    ritualSteps: [
+      { stepNumber: 1, title: 'Kunda Nirman', description: 'Preparing and purifying the havan kunda.', durationEstimate: 10 },
+      { stepNumber: 2, title: 'Sankalpam', description: "Declaring the devotee's intention.", durationEstimate: 10 },
+      { stepNumber: 3, title: 'Ganapati Avahana', description: 'Inviting Lord Ganesha through mantra.', durationEstimate: 15 },
+      { stepNumber: 4, title: 'Agni Sthapana', description: 'Lighting the sacred havan fire.', durationEstimate: 15 },
+      { stepNumber: 5, title: 'Ahuti (108 offerings)', description: 'Making 108 ahuti offerings while chanting Ganapati Atharvashirsha.', durationEstimate: 45 },
+      { stepNumber: 6, title: 'Purnahuti & Aarti', description: 'Final grand offering and Aarti.', durationEstimate: 15 },
+    ],
+    religiousTraditions: ['Hindu'],
+    images: [
+      { url: 'http://192.168.29.44:5000/public/images/ganapati-homam.jpg', alt: 'Ganapati Homam', isPrimary: true },
+    ],
+    isActive: true,
   },
 ];
 
@@ -104,6 +126,7 @@ const seedDB = async () => {
     console.log('Ceremonies seeded');
     const satyanarayan = createdCeremonies.find((c) => c.name === 'Satyanarayan Puja');
     const grihaPravesh = createdCeremonies.find((c) => c.name === 'Griha Pravesh');
+    const ganapatiHomam = createdCeremonies.find((c) => c.name === 'Ganapati Homam');
 
     // 2. CREATE USERS
     const salt = await bcrypt.genSalt(10);
@@ -121,27 +144,9 @@ const seedDB = async () => {
 
     // Test Users
     await User.create([
-      {
-        name: 'Sunny',
-        email: 'sunny@bmp.com',
-        password: testPassword,
-        userType: 'devotee',
-        phone: '9999999991',
-      },
-      {
-        name: 'Anish',
-        email: 'anish@bmp.com',
-        password: testPassword,
-        userType: 'devotee',
-        phone: '9999999992',
-      },
-      {
-        name: 'Anirudh',
-        email: 'anirudh@bmp.com',
-        password: testPassword,
-        userType: 'devotee',
-        phone: '9999999993',
-      },
+      { name: 'Sunny', email: 'sunny@bmp.com', password: testPassword, userType: 'devotee', phone: '9999999991' },
+      { name: 'Anish', email: 'anish@bmp.com', password: testPassword, userType: 'devotee', phone: '9999999992' },
+      { name: 'Anirudh', email: 'anirudh@bmp.com', password: testPassword, userType: 'devotee', phone: '9999999993' },
     ]);
 
     // Priest 1
@@ -164,37 +169,35 @@ const seedDB = async () => {
     console.log('Users seeded');
 
     // 3. CREATE PRIEST PROFILES
-    const priest1Profile = await PriestProfile.create({
+    await PriestProfile.create({
       userId: priest1._id,
       experience: 15,
       religiousTradition: 'North Indian',
-      description: 'Experienced Vedic Pandit performing all types of pujas.',
+      description: 'Experienced Vedic Pandit performing all types of pujas and havans.',
       languages: ['Hindi', 'Sanskrit', 'English'],
       profilePicture: 'http://192.168.29.44:5000/public/images/priest1.jpg',
-      location: {
-        type: 'Point',
-        coordinates: [78.35, 17.45], // Hyderabad
-      },
+      location: { type: 'Point', coordinates: [78.35, 17.45] },
       services: [
         { ceremonyId: satyanarayan._id, price: 2500, durationMinutes: 120 },
         { ceremonyId: grihaPravesh._id, price: 5500, durationMinutes: 180 },
+        { ceremonyId: ganapatiHomam._id, price: 4500, durationMinutes: 120 },
       ],
       isVerified: true,
       rating: { average: 4.8, count: 1 },
     });
 
-    const priest2Profile = await PriestProfile.create({
+    await PriestProfile.create({
       userId: priest2._id,
       experience: 25,
       religiousTradition: 'South Indian',
-      description: 'Expert in South Indian traditions and Homas.',
+      description: 'Expert in South Indian traditions, Homas, and Havans.',
       languages: ['Telugu', 'Sanskrit', 'Hindi'],
       profilePicture: 'http://192.168.29.44:5000/public/images/priest2.jpg',
-      location: {
-        type: 'Point',
-        coordinates: [78.4, 17.4], // Hyderabad slightly far
-      },
-      services: [{ ceremonyId: satyanarayan._id, price: 2200, durationMinutes: 110 }],
+      location: { type: 'Point', coordinates: [78.4, 17.4] },
+      services: [
+        { ceremonyId: satyanarayan._id, price: 2200, durationMinutes: 110 },
+        { ceremonyId: ganapatiHomam._id, price: 4200, durationMinutes: 120 },
+      ],
       isVerified: true,
       rating: { average: 0, count: 0 },
     });
@@ -208,11 +211,11 @@ const seedDB = async () => {
         priestId: priest1._id,
         ceremonyId: satyanarayan._id,
         ceremonyType: satyanarayan.name,
-        date: new Date(Date.now() + 86400000), // Tomorrow
+        date: new Date(Date.now() + 86400000),
         startTime: '10:00',
         endTime: '12:00',
         status: 'confirmed',
-        paymentStatus: 'completed', // 'paid' was invalid
+        paymentStatus: 'completed',
         basePrice: 2000,
         platformFee: 500,
         totalAmount: 2500,
@@ -232,15 +235,10 @@ const seedDB = async () => {
       if (booking1) {
         await Rating.create({
           bookingId: booking1._id.toString(),
-          userId: devotee._id.toString(), // Schema says type: String
+          userId: devotee._id.toString(),
           priestId: priest1._id.toString(),
           rating: 5,
-          categories: {
-            punctuality: 5,
-            knowledge: 5,
-            behavior: 5,
-            overall: 5,
-          },
+          categories: { punctuality: 5, knowledge: 5, behavior: 5, overall: 5 },
           review: 'Pandit ji was very knowledgeable and punctual.',
           ceremonyType: satyanarayan.name,
           ceremonyDate: new Date().toISOString(),
