@@ -8,10 +8,10 @@ WORKDIR /app
 # Copy dependency manifests first (leverages Docker layer cache)
 COPY package.json package-lock.json ./
 
-# Clean install all dependencies (including devDependencies)
-# This stage exists so that if a build step is ever added (e.g., TypeScript),
-# it can run here without polluting the production image.
-RUN npm ci
+# Install all dependencies (including devDependencies)
+# Using npm install instead of npm ci to avoid lock file format incompatibility
+# between npm v10 (node:20-alpine) and npm v11+ (local dev environment).
+RUN npm install
 
 # Copy the application source code
 COPY . .
@@ -28,7 +28,7 @@ WORKDIR /app
 
 # Copy dependency manifests and install ONLY production deps
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # Copy application source from builder
 # (In a TypeScript project, you'd COPY --from=builder /app/dist ./dist instead)
