@@ -49,6 +49,12 @@ const submitReview = async (reviewerId, { bookingId, rating, comment, tags }) =>
     throw error;
   }
 
+  if (booking.status !== 'completed') {
+    const error = new Error('Reviews can only be submitted for completed bookings');
+    error.statusCode = 403;
+    throw error;
+  }
+
   let role, revieweeId;
   if (booking.priestId.toString() === reviewerId) {
     role = 'priest_to_devotee';

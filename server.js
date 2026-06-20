@@ -7,6 +7,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const helmet = require('helmet');
 const compression = require('compression');
+const admin = require('./config/firebase');
+const User = require('./models/user');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -59,11 +61,19 @@ const userSockets = new Map();
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('register', (userId) => {
-    if (!userId) return;
-    userSockets.set(userId.toString(), socket.id);
-    socket.userId = userId.toString();
-    console.log(`[Socket] ${userId} registered with socket ${socket.id}`);
+  socket.on('register', async (token) => {
+    if (!token) return;
+    try {
+      const decoded = await admin.auth().verifyIdToken(token);
+      const user = await User.findOne({ firebaseUid: decoded.uid }).select('_id').lean();
+      if (!user) return;
+      const uid = user._id.toString();
+      userSockets.set(uid, socket.id);
+      socket.userId = uid;
+      console.log(`[Socket] ${uid} registered with socket ${socket.id}`);
+    } catch {
+      // Invalid or expired token — refuse registration silently
+    }
   });
 
   socket.on('disconnect', () => {

@@ -156,12 +156,13 @@ exports.createPaymentOrder = async (req, res, next) => {
 exports.verifyPayment = async (req, res, next) => {
   try {
     const { bookingId, rzpPaymentId, rzpOrderId, rzpSignature } = req.body;
+    const userId = req.user.id;
 
     const booking = await bookingService.verifyPayment(bookingId, {
       rzpPaymentId,
       rzpOrderId,
       rzpSignature,
-    });
+    }, userId);
 
     res.status(200).json({
       success: true,

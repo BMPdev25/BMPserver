@@ -30,10 +30,11 @@ const updateProfile = async (userId, updateData) => {
 const getProfile = async (userId) => {
   let profile = await PriestProfile.findOne({ userId })
     .populate('userId')
-    .populate('services.ceremonyId', 'name duration images description requirements');
+    .populate('services.ceremonyId', 'name duration images description requirements')
+    .lean();
 
   if (!profile) {
-    profile = new PriestProfile({
+    const newProfile = new PriestProfile({
       userId,
       experience: 0,
       services: [],
@@ -41,10 +42,11 @@ const getProfile = async (userId) => {
       verificationDocuments: [],
       templesAffiliated: [],
     });
-    await profile.save();
+    await newProfile.save();
     profile = await PriestProfile.findOne({ userId })
       .populate('userId')
-      .populate('services.ceremonyId', 'name duration images description requirements');
+      .populate('services.ceremonyId', 'name duration images description requirements')
+      .lean();
   }
 
   return profile;

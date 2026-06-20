@@ -49,16 +49,25 @@ const issueRefundIfPaid = async (bookingId, booking, reason) => {
   if (booking.paymentStatus !== 'completed' || !booking.paymentDetails?.rzpPaymentId) {
     return;
   }
+
+  // Atomically claim the refund slot — prevents double refund under concurrent calls
+  const claimed = await Booking.findOneAndUpdate(
+    { _id: bookingId, paymentStatus: 'completed' },
+    { $set: { paymentStatus: 'refunding' } },
+    { new: true }
+  );
+  if (!claimed) return; // already refunded or refunding
+
   try {
     const rzp = getRazorpayInstance();
-    const refund = await rzp.payments.refund(booking.paymentDetails.rzpPaymentId, {
-      amount: booking.totalAmount * 100,
+    const refund = await rzp.payments.refund(claimed.paymentDetails.rzpPaymentId, {
+      amount: claimed.totalAmount * 100,
       notes: { reason },
     });
-    await Booking.findByIdAndUpdate(bookingId, {
+    await Booking.findByIdAndUpdate(claimed._id, {
       $set: {
         paymentStatus: 'refunded',
-        'paymentDetails.refundAmount': booking.totalAmount,
+        'paymentDetails.refundAmount': claimed.totalAmount,
         'paymentDetails.refundReason': reason,
         'paymentDetails.refundDate': new Date(),
       },
@@ -66,7 +75,10 @@ const issueRefundIfPaid = async (bookingId, booking, reason) => {
     booking.paymentStatus = 'refunded';
     console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
   } catch (refundErr) {
-    // Log for support team — do not block the cancellation
+    // Revert claim so the refund can be retried
+    await Booking.findByIdAndUpdate(claimed._id, {
+      $set: { paymentStatus: 'completed' },
+    });
     console.error(`[Refund] FAILED for booking ${bookingId}:`, refundErr.message);
   }
 };
@@ -135,7 +147,7 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
   }
 
   if (status && status !== 'all') {
-    query.status = status;
+    query.status = Array.isArray(status) ? { $in: status } : status;
   }
 
   // Apply category as a DB-level filter so pagination counts are accurate
@@ -212,10 +224,10 @@ const getBookingDetails = async (bookingId, userId) => {
     throw error;
   }
 
-  const devoteeIdStr = booking.devoteeId?._id?.toString() || booking.devoteeId?.toString();
-  const priestIdStr = booking.priestId?._id?.toString() || booking.priestId?.toString();
-  const callerIsDevotee = devoteeIdStr === userId;
-  const callerIsPriest = priestIdStr === userId;
+  const devoteeIdStr = booking.devoteeId?._id?.toString() ?? booking.devoteeId?.toString() ?? null;
+  const priestIdStr = booking.priestId?._id?.toString() ?? booking.priestId?.toString() ?? null;
+  const callerIsDevotee = devoteeIdStr !== null && devoteeIdStr === userId;
+  const callerIsPriest = priestIdStr !== null && priestIdStr === userId;
   if (!callerIsDevotee && !callerIsPriest) {
     const error = new Error('Access denied');
     error.statusCode = 403;
@@ -612,14 +624,14 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     cancelled: [],
   };
 
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).populate('devoteeId', 'name phone email');
   if (!booking) {
     const error = new Error('Booking not found');
     error.statusCode = 404;
     throw error;
   }
 
-  if (booking.priestId.toString() !== userId) {
+  if (!booking.priestId || booking.priestId.toString() !== userId) {
     const error = new Error('Only the assigned priest can change the booking status');
     error.statusCode = 403;
     throw error;
@@ -712,29 +724,20 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   await booking.save();
 
   if (status === 'confirmed') {
-    await pushService.notifyDevoteeBookingConfirmed(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeBookingConfirmed(booking.devoteeId._id, booking);
   }
 
   if (status === 'cancelled') {
     // Refund the devotee if they had already paid before the priest cancelled
     await issueRefundIfPaid(booking._id, booking, reason || 'Cancelled by priest');
     // This endpoint is priestOnly — the priest is always the caller here
-    await pushService.notifyDevoteeCancelledByPriest(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeCancelledByPriest(booking.devoteeId._id, booking);
   }
 
   if (status === 'rejected') {
     // Refund the devotee if they had already paid before the priest declined
     await issueRefundIfPaid(booking._id, booking, reason || 'Declined by priest');
-    await pushService.notifyDevoteeBookingDeclined(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeBookingDeclined(booking.devoteeId._id, booking);
   }
 
   // Auto-cancel concurrent pending requests if confirmed
@@ -837,7 +840,6 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
           $inc: {
             ceremonyCount: 1,
             'earnings.totalEarnings': priestShare,
-            'earnings.thisMonth': priestShare,
             'earnings.pendingPayments': priestShare,
           },
         }
@@ -1010,16 +1012,13 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
 
-  // Tell the devotee a priest has been assigned and payment is now required.
-  await pushService.notifyDevoteeBookingConfirmed(
-    claimed.devoteeId._id || claimed.devoteeId,
-    claimed
-  );
-
   await claimed.populate([
     { path: 'devoteeId', select: 'name phone email' },
     { path: 'priestId', select: 'name phone email' },
   ]);
+
+  // Tell the devotee a priest was found and they must pay to confirm.
+  await pushService.notifyDevoteePriestFoundPayNow(claimed.devoteeId._id, claimed);
 
   return claimed;
 };
@@ -1158,7 +1157,11 @@ const createPaymentOrder = async (bookingId, userId) => {
   return order;
 };
 
-const verifyPayment = async (bookingId, paymentData) => {
+const verifyPayment = async (bookingId, paymentData, userId) => {
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error('Payment verification not configured');
+  }
+
   const { rzpPaymentId, rzpOrderId, rzpSignature } = paymentData;
 
   const booking = await Booking.findById(bookingId);
@@ -1166,6 +1169,10 @@ const verifyPayment = async (bookingId, paymentData) => {
     const error = new Error('Booking not found');
     error.statusCode = 404;
     throw error;
+  }
+
+  if (booking.devoteeId.toString() !== userId.toString()) {
+    throw Object.assign(new Error('Access denied'), { statusCode: 403 });
   }
 
   // Reject if payment window has expired
@@ -1188,9 +1195,12 @@ const verifyPayment = async (bookingId, paymentData) => {
 
   const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
   hmac.update(rzpOrderId + '|' + rzpPaymentId);
-  const generatedSignature = hmac.digest('hex');
+  const expected = hmac.digest('hex');
+  const valid =
+    expected.length === rzpSignature.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(rzpSignature));
 
-  if (generatedSignature !== rzpSignature) {
+  if (!valid) {
     const error = new Error('Payment verification failed');
     error.statusCode = 400;
     throw error;

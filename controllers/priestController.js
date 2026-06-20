@@ -6,6 +6,7 @@ const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
 const { getPresignedUrl } = require('../services/storageService');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 // Create or update priest profile
 exports.updateProfile = async (req, res, next) => {
@@ -246,7 +247,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
 
     // City/town filter
     if (city) {
-      filter['address.town'] = new RegExp(city.trim(), 'i');
+      filter['address.town'] = new RegExp(escapeRegex(city.trim()), 'i');
     }
 
     // Price filter (on services array)

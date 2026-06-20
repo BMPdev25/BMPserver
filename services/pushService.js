@@ -153,6 +153,20 @@ async function notifyPriestPaymentCredited(priestId, booking, amount) {
   );
 }
 
+async function notifyDevoteePriestFoundPayNow(devoteeId, booking) {
+  await sendToUser(
+    devoteeId,
+    'Pandit Found! ⚡ Complete Payment',
+    `A pandit accepted your ${booking.ceremonyType} request. Complete payment now to confirm.`,
+    {
+      screen: 'SearchingForPriest',
+      bookingId: booking._id.toString(),
+      targetRole: 'devotee',
+    },
+    'booking'
+  );
+}
+
 async function notifyBothCeremonyReminder(devoteeId, priestId, booking) {
   const dateStr = new Date(booking.date).toLocaleDateString('en-IN', {
     weekday: 'long',
@@ -192,4 +206,5 @@ module.exports = {
   notifyDevoteeCancelledByPriest,
   notifyPriestPaymentCredited,
   notifyBothCeremonyReminder,
+  notifyDevoteePriestFoundPayNow,
 };

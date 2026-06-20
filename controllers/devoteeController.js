@@ -1,10 +1,12 @@
 // controllers/devoteeController.js
 const devoteeService = require('../services/devoteeService');
+const { escapeRegex } = require('../utils/escapeRegex');
 const bookingService = require('../services/bookingService');
 const User = require('../models/user');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
 const Review = require('../models/review');
+const Rating = require('../models/rating');
 const PriestProfile = require('../models/priestProfile');
 const Ceremony = require('../models/ceremony');
 
@@ -49,7 +51,7 @@ exports.searchPriests = async (req, res, next) => {
     // 1. Ceremony Lookup
     if (ceremony) {
       preQueries.push(
-        Ceremony.findOne({ name: new RegExp(ceremony, 'i'), isActive: true })
+        Ceremony.findOne({ name: new RegExp(escapeRegex(ceremony), 'i'), isActive: true })
           .select('_id')
           .lean()
           .then((doc) => {
@@ -61,18 +63,18 @@ exports.searchPriests = async (req, res, next) => {
 
     // 2. City Lookup — filter on PriestProfile.address.town (User has no location.city field)
     if (city) {
-      filter['address.town'] = new RegExp(city, 'i');
+      filter['address.town'] = new RegExp(escapeRegex(city), 'i');
     }
 
     // 3. Search Term Lookup (Name)
     if (req.query.search) {
       preQueries.push(
-        User.find({ name: new RegExp(req.query.search, 'i') })
+        User.find({ name: new RegExp(escapeRegex(req.query.search), 'i') })
           .select('_id')
           .lean()
           .then((users) => {
             const userIds = users.map((u) => u._id);
-            const searchRegex = new RegExp(req.query.search, 'i');
+            const searchRegex = new RegExp(escapeRegex(req.query.search), 'i');
             filter.$or = [{ userId: { $in: userIds } }, { description: searchRegex }];
             return true;
           })
@@ -94,7 +96,7 @@ exports.searchPriests = async (req, res, next) => {
 
     // Filter by religious tradition
     if (religion) {
-      filter.religiousTradition = new RegExp(religion, 'i');
+      filter.religiousTradition = new RegExp(escapeRegex(religion), 'i');
     }
 
     // Filter by minimum rating
@@ -105,11 +107,7 @@ exports.searchPriests = async (req, res, next) => {
     // REMOVED: Strict 'available' filter. We want to show offline priests too for future bookings.
     // Instead, we can sort by availability or show status in UI.
 
-    // Add verification criteria (Approved or Pending)
-    // We combine this with existing $or if it exists, or create a new one
-    const verificationCriteria = {
-      $or: [{ verificationStatus: { $in: ['approved', 'pending'] } }, { isVerified: true }],
-    };
+    const verificationCriteria = { isVerified: true };
 
     // If we already have an $or (from search term), we need to wrap everything in an $and
     // to ensure both the search match AND the verification criteria are met.
@@ -198,7 +196,7 @@ exports.getPriestDetails = async (req, res, next) => {
       ceremonies: mappedCeremonies,
       description: priest.description || '',
       profilePicture: priest.profilePicture || '',
-      rating: priest.ratings || { average: 4.5, count: 50 },
+      rating: priest.ratings || { average: 0, count: 0 },
       availability: priest.currentAvailability?.status || 'available',
       languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
       certifications: priest.specializations?.map((s) => s.certification).filter(Boolean) || [],
@@ -207,26 +205,6 @@ exports.getPriestDetails = async (req, res, next) => {
     };
 
     res.status(200).json(priestData);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Get devotee's bookings
-exports.getBookings = async (req, res, next) => {
-  try {
-    const { data } = await bookingService.getBookings(req.user.id, 'devotee', req.query);
-    res.status(200).json(data.all || []);
-  } catch (error) {
-    next(error);
-  }
-};
-
-// Create a booking
-exports.createBooking = async (req, res, next) => {
-  try {
-    const booking = await bookingService.createBooking(req.user.id, req.body);
-    res.status(201).json(booking);
   } catch (error) {
     next(error);
   }
@@ -340,16 +318,16 @@ exports.getPendingActions = async (req, res, next) => {
       .lean();
 
     const bookingIds = completedBookings.map((b) => b._id);
-    const existingReviews = await Review.find({
+    const existingRatings = await Rating.find({
       bookingId: { $in: bookingIds },
-      reviewerId: devoteeId,
+      userId: devoteeId,
     })
       .select('bookingId')
       .lean();
 
-    const reviewedBookingIds = new Set(existingReviews.map((r) => r.bookingId.toString()));
+    const ratedBookingIds = new Set(existingRatings.map((r) => r.bookingId.toString()));
     const actions = completedBookings
-      .filter((b) => !reviewedBookingIds.has(b._id.toString()))
+      .filter((b) => !ratedBookingIds.has(b._id.toString()))
       .map((b) => ({
         _id: b._id,
         type: 'rate_priest',

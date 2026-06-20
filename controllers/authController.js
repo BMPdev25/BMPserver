@@ -83,6 +83,9 @@ exports.firebaseSync = async (req, res) => {
         firebaseUid: uid,
         userType: userType,
         expoPushToken: pushToken || null,
+        // Optional at registration (collected during onboarding for priests), but
+        // persisted when the client does provide it so search stays in sync.
+        languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
       });
       await user.save();
 
@@ -157,6 +160,8 @@ exports.firebaseSync = async (req, res) => {
       phone: user.phone,
       userType: user.userType,
       firebaseUid: user.firebaseUid,
+      profilePicture: user.profilePicture || null,
+      notifications: user.notifications || null,
       profileCompleted,
       verificationStatus,
       isVerified,
@@ -301,10 +306,9 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // OTP is correct — clean up
-    await OtpRecord.deleteOne({ phone: e164 });
-
     // Find or create the user in MongoDB by phone number
+    // OTP record is deleted AFTER createCustomToken so a Firebase failure does
+    // not leave a user who can no longer re-verify their phone.
     let user = await User.findOne({ phone: e164 });
 
     if (!user) {
@@ -318,6 +322,9 @@ exports.verifyOtp = async (req, res) => {
         name: name || 'New User',
         phone: e164,
         userType: type,
+        // Optional at registration (collected during onboarding for priests), but
+        // persisted when the client does provide it so search stays in sync.
+        languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
       });
       // Set firebaseUid before the first save: the schema requires `password`
       // unless firebaseUid is present, and OTP users have no password. _id is
@@ -356,6 +363,9 @@ exports.verifyOtp = async (req, res) => {
       phone: e164,
       userType: user.userType,
     });
+
+    // Token minted successfully — safe to consume the OTP now.
+    await OtpRecord.deleteOne({ phone: e164 });
 
     res.status(200).json({
       customToken,

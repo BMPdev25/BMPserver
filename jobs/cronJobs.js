@@ -17,19 +17,26 @@ const scheduleReminders = () => {
       for (const booking of bookings) {
         if (!booking.date || !booking.startTime) continue;
 
-        // Create a moment object for the booking start time
-        // Assuming time is in "HH:MM AM/PM" or "HH:MM" format
-        const bookingDateTime = moment(
-          `${moment(booking.date).format('YYYY-MM-DD')} ${booking.startTime}`,
-          ['YYYY-MM-DD HH:mm A', 'YYYY-MM-DD HH:mm']
+        // Create a moment object for the booking start time.
+        // startTime is a wall-clock time in IST — parse with the +05:30 offset so
+        // the comparison against `now` (an absolute instant) is correct regardless
+        // of the server's local timezone. This matches the IST convention used
+        // elsewhere (e.g. instant booking lead-time checks in bookingService.js).
+        const dateStr = moment(booking.date).format('YYYY-MM-DD');
+        const bookingDateTime = moment.parseZone(
+          `${dateStr} ${booking.startTime} +05:30`,
+          ['YYYY-MM-DD hh:mm A Z', 'YYYY-MM-DD HH:mm Z']
         );
 
         if (!bookingDateTime.isValid()) continue;
 
-        const hoursUntilBooking = bookingDateTime.diff(now, 'hours');
+        // Float diff + a ±0.5h tolerance window so a slightly-delayed cron tick
+        // never skips the integer-hour boundary. Duplicate fires are already
+        // guarded by sendReminder's 2-hour existence check.
+        const hoursUntilBooking = bookingDateTime.diff(now, 'hours', true);
 
         // 1. Day Before Reminder (Approx 24 hours before)
-        if (hoursUntilBooking === 24) {
+        if (hoursUntilBooking > 23.5 && hoursUntilBooking <= 24.5) {
           // Notify Devotee
           await sendReminder(
             booking.devoteeId,
@@ -50,7 +57,7 @@ const scheduleReminders = () => {
         }
 
         // 2. Morning-Of Reminder (Approx 2 hours before)
-        if (hoursUntilBooking === 2) {
+        if (hoursUntilBooking > 1.5 && hoursUntilBooking <= 2.5) {
           // Notify Devotee
           await sendReminder(
             booking.devoteeId,
@@ -101,9 +108,9 @@ const sendReminder = async (userId, relatedId, title, message, targetRole) => {
   }
 };
 
-// Every day at 8:00 AM IST (2:30 AM UTC)
+// Every day at 8:00 AM IST
 const schedulePushReminders = () => {
-  cron.schedule('30 2 * * *', async () => {
+  cron.schedule('30 8 * * *', async () => {
     console.log('[Cron] Running ceremony reminder job...');
     try {
       const tomorrow = new Date();
@@ -118,18 +125,21 @@ const schedulePushReminders = () => {
         status: 'confirmed',
       }).populate('devoteeId priestId', 'name');
 
-      for (const booking of bookings) {
+      // Skip bookings where either party's account was deleted (null populate result)
+      const valid = bookings.filter((b) => b.devoteeId?._id && b.priestId?._id);
+
+      for (const booking of valid) {
         await pushService.notifyBothCeremonyReminder(
           booking.devoteeId._id,
           booking.priestId._id,
           booking
         );
       }
-      console.log(`[Cron] Sent reminders for ${bookings.length} ceremonies.`);
+      console.log(`[Cron] Sent reminders for ${valid.length} ceremonies.`);
     } catch (err) {
       console.error('[Cron] Reminder job failed:', err.message);
     }
-  });
+  }, { timezone: 'Asia/Kolkata' });
 };
 
 // Every 15 minutes — cancel bookings whose payment window expired before payment
@@ -246,12 +256,17 @@ const scheduleStaleSearchingCleanup = () => {
   cron.schedule('0 * * * *', async () => {
     try {
       const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
-      const result = await Booking.deleteMany({
-        status: 'searching',
-        createdAt: { $lt: cutoff },
-      });
-      if (result.deletedCount > 0) {
-        console.log(`[Cron] Cleaned ${result.deletedCount} stale searching bookings`);
+      const result = await Booking.updateMany(
+        { status: 'searching', createdAt: { $lt: cutoff } },
+        {
+          $set: {
+            status: 'cancelled',
+            cancellationReason: 'No priest accepted the instant booking request',
+          },
+        }
+      );
+      if (result.modifiedCount > 0) {
+        console.log(`[Cron] Cancelled ${result.modifiedCount} stale searching bookings`);
       }
     } catch (err) {
       console.error('[Cron] Stale searching cleanup failed:', err.message);

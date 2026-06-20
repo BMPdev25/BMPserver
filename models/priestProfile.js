@@ -48,6 +48,7 @@ const priestProfileSchema = new mongoose.Schema({
 
   experience: Number,
   religiousTradition: String,
+  religiousTraditions: [String],
   description: String,
   // ceremonies: [String], // Removed legacy field. Use services instead.
 
@@ -178,17 +179,7 @@ const priestProfileSchema = new mongoose.Schema({
   // Earnings
   earnings: {
     totalEarnings: { type: Number, default: 0 },
-    thisMonth: { type: Number, default: 0 },
-    lastMonth: { type: Number, default: 0 },
     pendingPayments: { type: Number, default: 0 },
-    monthlyEarnings: [
-      {
-        month: Number,
-        year: Number,
-        amount: Number,
-        completedCeremonies: Number,
-      },
-    ],
     lastPayoutDate: Date,
     nextPayoutDate: Date,
   },
@@ -198,15 +189,6 @@ const priestProfileSchema = new mongoose.Schema({
     completionRate: { type: Number, default: 100 },
     responseTime: { type: Number, default: 2 },
     repeatCustomers: { type: Number, default: 0 },
-    monthlyTrends: [
-      {
-        month: Number,
-        year: Number,
-        bookings: Number,
-        earnings: Number,
-        averageRating: Number,
-      },
-    ],
   },
 
   verificationDocuments: [
@@ -261,7 +243,6 @@ priestProfileSchema.index({ location: '2dsphere' });
 priestProfileSchema.index({ verificationStatus: 1, isVerified: 1 });
 priestProfileSchema.index({ 'currentAvailability.status': 1 });
 priestProfileSchema.index({ 'ratings.average': -1 });
-priestProfileSchema.index({ isVerified: 1 });
 // Compound index for the common "available verified priests by rating" query
 priestProfileSchema.index({
   isVerified: 1,

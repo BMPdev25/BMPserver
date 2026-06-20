@@ -39,7 +39,4 @@ const walletSchema = new mongoose.Schema(
   }
 );
 
-// Index for quick priest wallet lookups
-walletSchema.index({ priestId: 1 });
-
 module.exports = mongoose.model('Wallet', walletSchema);
