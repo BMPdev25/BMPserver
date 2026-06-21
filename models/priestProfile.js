@@ -161,7 +161,7 @@ const priestProfileSchema = new mongoose.Schema({
     type: Number,
     default: 1,
     min: 1,
-    max: 6,
+    max: 7,
   },
   onboardingCompleted: {
     type: Boolean,
