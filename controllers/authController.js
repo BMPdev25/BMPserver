@@ -74,18 +74,17 @@ exports.firebaseSync = async (req, res) => {
       if (!userType) {
         return res.status(404).json({ message: 'No account found. Please register to continue.' });
       }
+      // Omit email/phone entirely when absent — Mongoose casts `undefined` to
+      // `null` when the key is present in the constructor object, which trips
+      // the unique sparse index on a second phoneless/emailless signup.
       user = new User({
         name: name || decodedToken.name || 'New User',
-        email: email || undefined,
-        // Use undefined (not null) so the unique+sparse index skips phoneless
-        // (e.g. Google/email) signups — null would be indexed and collide.
-        phone: phone_number || undefined,
         firebaseUid: uid,
         userType: userType,
         expoPushToken: pushToken || null,
-        // Optional at registration (collected during onboarding for priests), but
-        // persisted when the client does provide it so search stays in sync.
         languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
+        ...(email ? { email } : {}),
+        ...(phone_number ? { phone: phone_number } : {}),
       });
       await user.save();
 
