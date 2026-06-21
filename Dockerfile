@@ -7,9 +7,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
-# npm ci is deterministic (respects lock file) and faster than npm install.
-# node:20-alpine ships npm v10 which supports lockfileVersion 3.
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm install --omit=dev && npm cache clean --force
 
 # ============================================================
 # Stage 2: Production Runner — minimal, secure runtime image
