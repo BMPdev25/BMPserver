@@ -28,6 +28,7 @@ exports.firebaseSync = async (req, res) => {
     const {
       userType: rawUserType,
       name,
+      phone, // <--- Extract phone from req.body as the frontend sends it during registration
       pushToken,
       languagesSpoken,
       experience,
@@ -41,13 +42,12 @@ exports.firebaseSync = async (req, res) => {
 
     // Fallback: link existing account to Firebase UID if phone/email matches.
     // Only allowed when the account has no Firebase UID yet — prevents account takeover.
-    if (!user && (phone_number || email)) {
-      // Build $or clauses only for fields that are actually present. A clause like
-      // { phone: undefined } is NOT dropped by filter(Boolean) (it's a truthy object)
-      // and Mongoose treats it as { phone: null }, which would match any phoneless
-      // account and cause false 409s / wrong-account linking.
+    // Use the phone from either firebase or the request body
+    const searchPhone = phone_number || phone;
+    
+    if (!user && (searchPhone || email)) {
       const orClauses = [];
-      if (phone_number) orClauses.push({ phone: phone_number });
+      if (searchPhone) orClauses.push({ phone: searchPhone });
       if (email) orClauses.push({ email });
 
       user = orClauses.length ? await User.findOne({ $or: orClauses }) : null;
@@ -80,17 +80,21 @@ exports.firebaseSync = async (req, res) => {
       ) {
         return res.status(400).json({ message: 'Priests must select at least one language.' });
       }
-      user = new User({
+      
+      const newUserData = {
         name: name || decodedToken.name || 'New User',
-        email: email || undefined,
-        // Use undefined (not null) so the unique+sparse index skips phoneless
-        // (e.g. Google/email) signups — null would be indexed and collide.
-        phone: phone_number || undefined,
         firebaseUid: uid,
         userType: userType,
         expoPushToken: pushToken || null,
         ...(userType === 'priest' && languagesSpoken ? { languagesSpoken } : {}),
-      });
+      };
+      
+      // Only set email and phone if they exist, preventing MongoDB from storing null
+      // and tripping the sparse unique index (E11000 duplicate key error { phone: null })
+      if (email) newUserData.email = email;
+      if (searchPhone) newUserData.phone = searchPhone;
+      
+      user = new User(newUserData);
       await user.save();
 
       // Handle Profiles
@@ -170,7 +174,11 @@ exports.firebaseSync = async (req, res) => {
     });
   } catch (error) {
     console.error('Firebase sync error:', error);
-    res.status(500).json({ message: 'Server error during firebase sync/login' });
+    res.status(500).json({ 
+      message: 'Server error during firebase sync/login', 
+      error: error.message,
+      stack: error.stack
+    });
   }
 };
 

@@ -239,6 +239,15 @@ const bookingSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  itemsDeliveryRequested: {
+    type: Boolean,
+    default: false,
+  },
+  itemsDeliveryStatus: {
+    type: String,
+    enum: ['pending', 'shipped', 'delivered', 'not_applicable'],
+    default: 'not_applicable',
+  },
 });
 
 // Create indexes for better query performance

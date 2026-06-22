@@ -30,6 +30,21 @@ exports.protect = async (req, res, next) => {
       });
     }
 
+    // Try local JWT validation first (for admin email/password login)
+    const jwt = require('jsonwebtoken');
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded && decoded.id) {
+        const user = await User.findById(decoded.id).select('-password');
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      }
+    } catch (jwtErr) {
+      // Proceed to Firebase ID token verification if local JWT check fails
+    }
+
     // Verify Firebase token
     // Wrap in a try-catch to differentiate token expiration from db errors
     let decodedToken;
