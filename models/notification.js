@@ -47,6 +47,7 @@ const notificationSchema = new mongoose.Schema({
 notificationSchema.index({ userId: 1, createdAt: -1 });
 notificationSchema.index({ userId: 1, read: 1 });
 notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 
 // Update the updatedAt field before saving
 notificationSchema.pre('save', function (next) {

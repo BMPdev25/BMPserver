@@ -1,9 +1,6 @@
 // services/devoteeService.js
 const User = require('../models/user');
 const PriestProfile = require('../models/priestProfile');
-const Booking = require('../models/booking');
-const Notification = require('../models/notification');
-const Review = require('../models/review');
 const Ceremony = require('../models/ceremony');
 const mongoose = require('mongoose');
 
@@ -12,7 +9,6 @@ const getAllPriests = async () => {
     .populate({
       path: 'userId',
       select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
     })
     .lean()
     .exec();
@@ -52,12 +48,14 @@ const searchPriests = async (query) => {
   }
 
   const priests = await PriestProfile.find(filter)
+    .select(
+      'userId services ratings currentAvailability location experience religiousTradition profilePicture isVerified verificationStatus'
+    )
     .populate({
       path: 'userId',
-      select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
+      select: 'name profilePicture languagesSpoken',
     })
-    .populate('services.ceremonyId', 'name')
+    .populate('services.ceremonyId', 'name category duration')
     .sort({ 'ratings.average': -1 })
     .limit(limit * 1)
     .skip((page - 1) * limit)
@@ -76,23 +74,27 @@ const getPriestDetails = async (priestId) => {
   }
 
   let priest = await PriestProfile.findById(priestId)
+    .select(
+      'userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics'
+    )
     .populate({
       path: 'userId',
-      select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
+      select: 'name profilePicture languagesSpoken',
     })
-    .populate('services.ceremonyId', 'name ritualSteps')
+    .populate('services.ceremonyId', 'name category duration ritualSteps')
     .lean()
     .exec();
 
   if (!priest) {
     priest = await PriestProfile.findOne({ userId: priestId })
+      .select(
+        'userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics'
+      )
       .populate({
         path: 'userId',
-        select: 'name email phone location languagesSpoken',
-        populate: { path: 'languagesSpoken', select: 'name' },
+        select: 'name profilePicture languagesSpoken',
       })
-      .populate('services.ceremonyId', 'name ritualSteps')
+      .populate('services.ceremonyId', 'name category duration ritualSteps')
       .lean()
       .exec();
   }
@@ -140,12 +142,13 @@ const manageAddress = async (userId, action, addressData, addressId = null) => {
       else if (user.addresses.length === 0) addressData.isDefault = true;
       user.addresses.push(addressData);
       break;
-    case 'update':
+    case 'update': {
       const idx = user.addresses.findIndex((a) => a._id.toString() === addressId);
       if (idx === -1) throw new Error('Address not found');
       if (addressData.isDefault) user.addresses.forEach((a) => (a.isDefault = false));
       user.addresses[idx] = { ...user.addresses[idx], ...addressData };
       break;
+    }
     case 'delete':
       user.addresses = user.addresses.filter((a) => a._id.toString() !== addressId);
       if (user.addresses.length > 0 && !user.addresses.some((a) => a.isDefault)) {

@@ -104,23 +104,14 @@ const ceremonySchema = new mongoose.Schema({
       },
     ],
     participants: {
-      required: {
-        type: Number,
-        default: 1,
-      },
-      maximum: {
-        type: Number,
-        default: null,
-      },
+      type: String,
     },
     spaceRequirements: {
       type: String,
     },
-    specialInstructions: [
-      {
-        type: String,
-      },
-    ],
+    specialInstructions: {
+      type: String,
+    },
   },
   // Ritual Steps (Default Template)
   ritualSteps: [

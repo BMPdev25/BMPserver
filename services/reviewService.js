@@ -1,6 +1,7 @@
 // services/reviewService.js
 const Review = require('../models/review');
 const User = require('../models/user');
+const PriestProfile = require('../models/priestProfile');
 const Booking = require('../models/booking');
 const mongoose = require('mongoose');
 
@@ -27,6 +28,17 @@ const recalculateUserRating = async (userId) => {
   };
 
   await User.findByIdAndUpdate(userId, { $set: updateData });
+
+  // Keep PriestProfile.ratings in sync — public endpoints read from there
+  await PriestProfile.findOneAndUpdate(
+    { userId },
+    {
+      $set: {
+        'ratings.average': updateData['rating.average'],
+        'ratings.count': updateData['rating.count'],
+      },
+    }
+  );
 };
 
 const submitReview = async (reviewerId, { bookingId, rating, comment, tags }) => {
@@ -84,7 +96,8 @@ const getUserReviews = async (userId, { page = 1, limit = 10 }) => {
     .populate('reviewerId', 'name profilePicture')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(limit);
+    .limit(limit)
+    .lean();
   const total = await Review.countDocuments({ revieweeId: userId, isVisible: true });
   return { reviews, total };
 };

@@ -1,9 +1,10 @@
 // routes/devoteeRoutes.js
 const express = require('express');
 const devoteeController = require('../controllers/devoteeController');
-const bookingController = require('../controllers/bookingController');
 const reviewController = require('../controllers/reviewController');
 const { protect, devoteeOnly } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { addAddressRules } = require('../validators/profileValidators');
 
 const router = express.Router();
 
@@ -36,8 +37,14 @@ router.put(
 
 // Address Management
 router.get('/addresses', protect, devoteeController.getAddresses);
-router.post('/addresses', protect, devoteeController.addAddress);
-router.put('/addresses/:addressId', protect, devoteeController.updateAddress);
+router.post('/addresses', protect, addAddressRules, validate, devoteeController.addAddress);
+router.put(
+  '/addresses/:addressId',
+  protect,
+  addAddressRules,
+  validate,
+  devoteeController.updateAddress
+);
 router.delete('/addresses/:addressId', protect, devoteeController.deleteAddress);
 
 module.exports = router;

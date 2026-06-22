@@ -48,10 +48,40 @@ exports.createBooking = async (req, res, next) => {
     const devoteeId = req.user.id;
     const booking = await bookingService.createBooking(devoteeId, req.body);
 
+    // Snapshot before any further population so the HTTP response is stable
+    // regardless of whether the priest has an active socket connection.
+    const responseData = booking.toObject();
+
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+    const priestSocketId = userSockets.get(
+      booking.priestId._id?.toString() ?? booking.priestId.toString()
+    );
+    if (io && priestSocketId) {
+      await booking.populate('devoteeId', 'name profilePicture createdAt');
+      io.to(priestSocketId).emit('new_booking_request', booking.toObject());
+    }
+
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
-      data: booking,
+      data: responseData,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Create an instant booking (broadcast to priests; no priest chosen up front)
+exports.createInstantBooking = async (req, res, next) => {
+  try {
+    const devoteeId = req.user.id;
+    const booking = await bookingService.createInstantBooking(devoteeId, req.body);
+
+    res.status(201).json({
+      success: true,
+      message: 'Searching for an available priest',
+      data: booking.toObject(),
     });
   } catch (error) {
     next(error);
@@ -99,13 +129,15 @@ exports.cancelBookingByDevotee = async (req, res, next) => {
 // Create payment order
 exports.createPaymentOrder = async (req, res, next) => {
   try {
-    const { bookingId, amount } = req.body;
+    const { bookingId } = req.body;
     const userId = req.user.id;
 
-    if (!bookingId || !amount) {
+    // The amount is always derived server-side from booking.totalAmount — a
+    // client-supplied amount is never trusted, so only bookingId is required.
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: 'Booking ID and amount are required'
+        message: 'Booking ID is required',
       });
     }
 

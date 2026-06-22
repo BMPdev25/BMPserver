@@ -3,7 +3,9 @@ const Ceremony = require('../models/ceremony');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-const ceremonies = [
+const ceremonies = require('../data/ceremonies');
+
+const _unused = [
   // --- DEITY PUJAS (Image: deity_puja.png) ---
   {
     name: 'Ganesh Puja',
@@ -959,14 +961,14 @@ const ceremonies = [
       },
     ],
   },
-];
+]; // _unused — real data is in ../data/ceremonies.js
 
 const seedCeremonies = async () => {
   try {
     const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
     if (!uri) throw new Error('Missing MONGO_URI in .env');
-    await mongoose.connect(uri);
-    console.log('Connected to MongoDB');
+    await mongoose.connect(uri, { dbName: 'bmp' });
+    console.log('Connected to MongoDB (bmp)');
 
     console.log(`Seeding ${ceremonies.length} ceremonies...`);
 

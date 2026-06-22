@@ -57,6 +57,7 @@ const bookingSchema = new mongoose.Schema({
       'in_progress',
       'completed',
       'cancelled',
+      'rejected',
       'expired',
     ],
     default: 'pending',
@@ -64,7 +65,32 @@ const bookingSchema = new mongoose.Schema({
   bookingType: {
     type: String,
     enum: ['scheduled', 'instant'],
+    required: true,
     default: 'scheduled',
+  },
+  // For instant bookings: which ceremony is requested (no priest chosen yet)
+  ceremonyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ceremony',
+    default: null,
+  },
+  // For instant bookings: a preferred priest who gets a head-start before the
+  // request is broadcast to everyone (set when instant is started from a
+  // specific priest's page).
+  preferredPriestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  // For instant bookings: when the broadcast (searching) expires.
+  instantExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  // For instant bookings: until when only the preferred priest is notified.
+  headStartExpiresAt: {
+    type: Date,
+    default: null,
   },
   expiryTime: {
     type: Date,
@@ -99,6 +125,7 @@ const bookingSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
+    maxlength: [1000, 'Notes cannot exceed 1000 characters'],
   },
   updatedAt: {
     type: Date,
@@ -142,6 +169,9 @@ const bookingSchema = new mongoose.Schema({
     receiptNumber: {
       type: String,
     },
+    rzpOrderId: { type: String, default: null },
+    rzpPaymentId: { type: String, default: null },
+    rzpSignature: { type: String, default: null },
   },
   // Rating and Review
   rating: {
@@ -205,6 +235,19 @@ const bookingSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  paymentExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  itemsDeliveryRequested: {
+    type: Boolean,
+    default: false,
+  },
+  itemsDeliveryStatus: {
+    type: String,
+    enum: ['pending', 'shipped', 'delivered', 'not_applicable'],
+    default: 'not_applicable',
+  },
 });
 
 // Create indexes for better query performance
@@ -214,6 +257,10 @@ bookingSchema.index({ status: 1 });
 bookingSchema.index({ date: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ devoteeId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, date: 1 });
+bookingSchema.index({ status: 1, createdAt: -1 });
 
 // Update the updatedAt field before saving
 bookingSchema.pre('save', function (next) {

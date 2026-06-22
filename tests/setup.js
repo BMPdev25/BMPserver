@@ -1,39 +1,51 @@
-const { MongoMemoryServer } = require('mongodb-memory-server');
-const mongoose = require('mongoose');
+// Enable the OTP auth routes in tests. They are gated behind OTP_ENABLED at
+// require-time in routes/authRoutes.js (disabled by default until MSG91 is
+// configured); without this, /send-otp and /verify-otp 404 in the test env.
+// Must be set before server.js is required by any test file.
+process.env.OTP_ENABLED = 'true'
 
-let mongod;
+const { MongoMemoryServer } = require('mongodb-memory-server')
+const mongoose = require('mongoose')
 
-/**
- * Connect to the in-memory database.
- */
+let mongoServer
+
+// ── Hooks used by setupFilesAfterFramework ────────────────────────────
+beforeAll(async () => {
+  mongoServer = await MongoMemoryServer.create()
+  const uri = mongoServer.getUri()
+  await mongoose.connect(uri)
+})
+
+afterAll(async () => {
+  await mongoose.disconnect()
+  if (mongoServer) await mongoServer.stop()
+})
+
+afterEach(async () => {
+  const collections = mongoose.connection.collections
+  for (const key in collections) {
+    await collections[key].deleteMany({})
+  }
+})
+
+// ── Legacy exports for old test files ────────────────────────────────
 module.exports.connect = async () => {
-  mongod = await MongoMemoryServer.create();
-  const uri = mongod.getUri();
+  if (mongoose.connection.readyState === 0) {
+    mongoServer = await MongoMemoryServer.create()
+    const uri = mongoServer.getUri()
+    await mongoose.connect(uri)
+  }
+}
 
-  // Mongoose 7+ options
-  await mongoose.connect(uri);
-};
-
-/**
- * Drop database, close the connection and stop mongod.
- */
 module.exports.closeDatabase = async () => {
-  if (mongod) {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-    await mongod.stop();
-  }
-};
+  await mongoose.connection.dropDatabase()
+  await mongoose.connection.close()
+  if (mongoServer) await mongoServer.stop()
+}
 
-/**
- * Remove all data from all collections.
- */
 module.exports.clearDatabase = async () => {
-  if (mongod) {
-    const collections = mongoose.connection.collections;
-    for (const key in collections) {
-      const collection = collections[key];
-      await collection.deleteMany();
-    }
+  const collections = mongoose.connection.collections
+  for (const key in collections) {
+    await collections[key].deleteMany()
   }
-};
+}

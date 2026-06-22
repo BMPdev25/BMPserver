@@ -1,6 +1,8 @@
-const Banner = require('../models/banner');
+﻿const Banner = require('../models/banner');
 const Panchang = require('../models/panchang');
 const CeremonyCategory = require('../models/ceremonyCategory');
+const Ceremony = require('../models/ceremony');
+const PriestProfile = require('../models/priestProfile');
 
 /**
  * Controller for application metadata (Home screen content)
@@ -36,7 +38,6 @@ const metadataController = {
       });
 
       if (!panchang) {
-        // Return a mock default if not found in DB yet
         return res.status(200).json({
           title: "Today's Panchang",
           subtitle: 'Auspicious day for ceremonies',
@@ -54,12 +55,50 @@ const metadataController = {
   },
 
   /**
-   * Get all active ceremony categories
+   * Get active ceremony categories enriched with:
+   *  - representativeCeremonyId: first Ceremony doc whose category slug matches
+   *  - filtered to only categories where at least one verified priest offers a ceremony
    */
   getCategories: async (req, res) => {
     try {
-      const categories = await CeremonyCategory.find({ isActive: true }).sort({ order: 1 });
-      res.status(200).json(categories);
+      const [categories, ceremonies, priestProfiles] = await Promise.all([
+        CeremonyCategory.find({ isActive: true }).sort({ order: 1 }).lean(),
+        Ceremony.find({}, '_id category').lean(),
+        PriestProfile.find({ isVerified: true }, 'services.ceremonyId').lean(),
+      ]);
+
+      // Set of ceremony IDs offered by at least one verified priest
+      const offeredCeremonyIds = new Set(
+        priestProfiles.flatMap((p) =>
+          (p.services || [])
+            .map((s) => s.ceremonyId?.toString())
+            .filter(Boolean)
+        )
+      );
+
+      // Map: category slug -> first Ceremony _id (representative)
+      const representativeMap = {};
+      for (const c of ceremonies) {
+        if (c.category && !representativeMap[c.category]) {
+          representativeMap[c.category] = c._id.toString();
+        }
+      }
+
+      // Set of category slugs backed by at least one verified priest's ceremony
+      const activeSlugSet = new Set(
+        ceremonies
+          .filter((c) => offeredCeremonyIds.has(c._id.toString()))
+          .map((c) => c.category)
+      );
+
+      const enriched = categories
+        .filter((cat) => activeSlugSet.has(cat.slug))
+        .map((cat) => ({
+          ...cat,
+          representativeCeremonyId: representativeMap[cat.slug] || null,
+        }));
+
+      res.status(200).json(enriched);
     } catch (error) {
       console.error('getCategories error:', error);
       res.status(500).json({ message: 'Failed to fetch categories' });
@@ -108,7 +147,6 @@ const metadataController = {
         { id: '2026-11-24', date: '2026-11-24', name: 'Kartika Purnima', description: 'Dev Deepawali' },
         { id: '2026-12-30-1', date: '2026-12-30', name: 'Vaikuntha Ekadashi', description: 'Opening of Vaikuntha Dwar' },
         { id: '2026-12-30-2', date: '2026-12-30', name: 'Dattatreya Jayanti', description: 'Birth of Lord Dattatreya' },
-
         // 2027
         { id: '2027-01-14', date: '2027-01-14', name: 'Makara Sankranti', description: 'Solar New Year' },
         { id: '2027-03-06', date: '2027-03-06', name: 'Maha Shivaratri', description: 'Great Night of Shiva' },
@@ -124,14 +162,14 @@ const metadataController = {
         { id: '2027-10-06', date: '2027-10-06', name: 'Navratri Begins', description: 'Nine nights start' },
         { id: '2027-10-15', date: '2027-10-15', name: 'Dussehra', description: 'Vijayadashami' },
         { id: '2027-11-04', date: '2027-11-04', name: 'Diwali', description: 'Festival of Lights' },
-        { id: '2027-12-20', date: '2027-12-20', name: 'Vaikuntha Ekadashi', description: 'Sacred fast day' }
+        { id: '2027-12-20', date: '2027-12-20', name: 'Vaikuntha Ekadashi', description: 'Sacred fast day' },
       ];
       res.status(200).json(festivals);
     } catch (error) {
       console.error('getFestivals error:', error);
       res.status(500).json({ message: 'Failed to fetch festivals' });
     }
-  }
+  },
 };
 
 module.exports = metadataController;

@@ -4,6 +4,18 @@ const User = require('../models/user');
 
 // Protect routes - verify Firebase ID token
 exports.protect = async (req, res, next) => {
+  // Test-only bypass: fetches the real user from DB so role cannot be forged via headers.
+  if (process.env.NODE_ENV === 'test' && req.headers['x-test-user-id']) {
+    try {
+      const user = await User.findById(req.headers['x-test-user-id']).select('-password');
+      if (!user) return res.status(401).json({ message: 'Test user not found' });
+      req.user = user;
+      return next();
+    } catch {
+      return res.status(401).json({ message: 'Invalid test user ID' });
+    }
+  }
+
   try {
     let token;
 
@@ -18,14 +30,29 @@ exports.protect = async (req, res, next) => {
       });
     }
 
+    // Try local JWT validation first (for admin email/password login)
+    const jwt = require('jsonwebtoken');
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded && decoded.id) {
+        const user = await User.findById(decoded.id).select('-password');
+        if (user) {
+          req.user = user;
+          return next();
+        }
+      }
+    } catch (jwtErr) {
+      // Proceed to Firebase ID token verification if local JWT check fails
+    }
+
     // Verify Firebase token
     // Wrap in a try-catch to differentiate token expiration from db errors
     let decodedToken;
     try {
-       decodedToken = await admin.auth().verifyIdToken(token);
+      decodedToken = await admin.auth().verifyIdToken(token);
     } catch (firebaseError) {
-       console.error('Firebase token verification error:', firebaseError.message);
-       return res.status(401).json({ message: 'Not authorized, invalid or expired Firebase token' });
+      console.error('Firebase token verification error:', firebaseError.message);
+      return res.status(401).json({ message: 'Not authorized, invalid or expired Firebase token' });
     }
 
     const firebaseUid = decodedToken.uid;
@@ -37,7 +64,9 @@ exports.protect = async (req, res, next) => {
       // NOTE: We do not fail here if they are hitting the /sync route, so we attach firebaseUser.
       // But typically we enforce the user exists. Let's attach both so controllers can decide.
       req.firebaseUser = decodedToken;
-      return res.status(401).json({ message: 'User profile not found. Please complete registration/sync.' });
+      return res
+        .status(401)
+        .json({ message: 'User profile not found. Please complete registration/sync.' });
     }
 
     // Add user to request object
@@ -50,14 +79,31 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-// Middleware to restrict access to priest only
+// Middleware to restrict access to priests (any verification status).
+// Use this for onboarding routes (profile setup, document upload, submit-verification).
 exports.priestOnly = (req, res, next) => {
   if (req.user && req.user.userType === 'priest') {
+    return next();
+  }
+  res.status(403).json({ message: 'Access denied, priest role required' });
+};
+
+// Middleware for priest routes that require admin verification (bookings, earnings, payouts).
+exports.verifiedPriestOnly = async (req, res, next) => {
+  if (!req.user || req.user.userType !== 'priest') {
+    return res.status(403).json({ message: 'Access denied, priest role required' });
+  }
+  try {
+    const PriestProfile = require('../models/priestProfile');
+    const profile = await PriestProfile.findOne({ userId: req.user._id })
+      .select('isVerified')
+      .lean();
+    if (!profile || !profile.isVerified) {
+      return res.status(403).json({ message: 'Priest account is pending admin verification' });
+    }
     next();
-  } else {
-    res.status(403).json({
-      message: 'Access denied, priest role required',
-    });
+  } catch (err) {
+    next(err);
   }
 };
 

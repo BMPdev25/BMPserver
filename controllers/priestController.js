@@ -1,14 +1,29 @@
 // controllers/priestController.js
 const priestService = require('../services/priestService');
 const bookingService = require('../services/bookingService');
+const walletController = require('./walletController');
 const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
+const { getPresignedUrl } = require('../services/storageService');
 
 // Create or update priest profile
 exports.updateProfile = async (req, res, next) => {
   try {
     const profile = await priestService.updateProfile(req.user.id, req.body);
+
+    // Keep User document in sync for fields that live on both models
+    const userUpdates = {};
+    if (req.body.name && req.body.name.trim() !== '') {
+      userUpdates.name = req.body.name.trim();
+    }
+    if (Array.isArray(req.body.languagesSpoken)) {
+      userUpdates.languagesSpoken = req.body.languagesSpoken;
+    }
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(req.user.id, userUpdates);
+    }
+
     res.status(200).json(profile);
   } catch (error) {
     next(error);
@@ -23,7 +38,7 @@ exports.toggleStatus = async (req, res, next) => {
       status,
       autoToggle,
     });
-    res.status(200).json({ success: true, currentAvailability });
+    res.status(200).json({ success: true, data: { currentAvailability } });
   } catch (error) {
     next(error);
   }
@@ -39,11 +54,29 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
+exports.getProfileCompletion = async (req, res, next) => {
+  try {
+    const completionData = await priestService.getProfileCompletion(req.user.id);
+    res.status(200).json(completionData);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Get priest's bookings
 exports.getBookings = async (req, res, next) => {
   try {
-    const bookings = await priestService.getBookings(req.user.id, req.query);
-    res.status(200).json(bookings);
+    const result = await bookingService.getBookings(req.user.id, 'priest', {
+      category: req.query.category,
+      status: req.query.status,
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (error) {
     next(error);
   }
@@ -52,29 +85,41 @@ exports.getBookings = async (req, res, next) => {
 // Get priest's earnings
 exports.getEarnings = async (req, res, next) => {
   try {
-    const earnings = await priestService.getEarnings(req.user.id);
-    res.status(200).json(earnings);
+    const result = await priestService.getEarnings(req.user.id);
+    const priestProfile = await PriestProfile.findOne(
+      { userId: req.user.id },
+      'ratings ceremonyCount'
+    );
+    res.status(200).json({
+      success: true,
+      data: {
+        wallet: {
+          currentBalance: result.availableBalance ?? 0,
+        },
+        earnings: {
+          thisMonth: result.thisMonth ?? 0,
+          totalEarnings: result.totalCredited ?? 0,
+          pendingPayments: result.availableBalance ?? 0,
+        },
+        ceremonyCount: result.pujasCompleted ?? result.totalBookings ?? 0,
+        ratings: {
+          average: priestProfile?.ratings?.average ?? 0,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// Request withdrawal (redirects to service logic)
-exports.requestWithdrawal = async (req, res, next) => {
-  try {
-    const { amount, paymentMethod } = req.body;
-    // For now, keep the withdrawal simple or redirect to wallet service if needed.
-    // Assuming simple logic from service if created.
-    res.status(200).json({ message: 'Withdrawal logic moved to wallet service.' });
-  } catch (error) {
-    next(error);
-  }
-};
+// Request withdrawal — delegates to the real wallet payout implementation so
+// /api/priest/earnings/withdraw and /api/wallet/withdraw share one code path
+// (balance checks, pending transaction, bank transfer, refund-on-failure).
+exports.requestWithdrawal = (req, res, next) => walletController.requestWithdrawal(req, res, next);
 
 // Get transactions history
 exports.getTransactions = async (req, res, next) => {
   try {
-    const { type, limit } = req.query;
     const { transactions } = await priestService.getEarnings(req.user.id);
     res.status(200).json(transactions);
   } catch (error) {
@@ -128,6 +173,7 @@ exports.updateBookingStatus = async (req, res, next) => {
       reason,
     });
     res.status(200).json({
+      success: true,
       message: `Booking ${status} successfully`,
       booking: booking,
     });
@@ -139,40 +185,143 @@ exports.updateBookingStatus = async (req, res, next) => {
 // Get available pujaris
 exports.getAvailablePujaris = async (req, res, next) => {
   try {
-    const { ceremonyId, lat, lng, radius = 10 } = req.query;
-    if (!ceremonyId) {
-      return res.status(400).json({ message: 'ceremonyId is required' });
-    }
+    const {
+      ceremonyId,
+      lat,
+      lng,
+      radius = 50,
+      page = 1,
+      limit = 10,
+      sort = 'rating',
+      minRating,
+      minPrice,
+      maxPrice,
+      languages,
+      city,
+    } = req.query;
 
+    // Build geo filter (optional)
+    const hasLocation = lat && lng;
     let geoFilter = {};
-    if (lat && lng) {
+    if (hasLocation) {
+      const radiusMetres = parseFloat(radius) * 1000;
       geoFilter = {
         location: {
-          $near: {
-            $geometry: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
-            $maxDistance: parseFloat(radius) * 1000,
+          $geoWithin: {
+            $centerSphere: [
+              [parseFloat(lng), parseFloat(lat)],
+              radiusMetres / 6378100, // metres → radians
+            ],
           },
         },
       };
     }
 
-    const pujarisDocs = await PriestProfile.find({
+    // Build base filter
+    const filter = {
       ...geoFilter,
-      'services.ceremonyId': ceremonyId,
       isVerified: true,
-    })
-      .populate('userId', 'name phone languagesSpoken location')
-      .populate('services.ceremonyId', 'name requirements durationMinutes')
-      .lean();
+    };
+
+    // Optional availability status filter (e.g. ?availability=available)
+    if (req.query.availability) {
+      filter['currentAvailability.status'] = req.query.availability;
+    }
+
+    // Ceremony filter (optional now)
+    if (ceremonyId) {
+      filter['services.ceremonyId'] = ceremonyId;
+    }
+
+    // Rating filter
+    if (minRating) {
+      filter['ratings.average'] = { $gte: parseFloat(minRating) };
+    }
+
+    // Language filter
+    if (languages) {
+      const langArray = Array.isArray(languages) ? languages : [languages];
+      filter['languagesSpoken'] = { $in: langArray };
+    }
+
+    // City/town filter
+    if (city) {
+      filter['address.town'] = new RegExp(city.trim(), 'i');
+    }
+
+    // Price filter (on services array)
+    if (minPrice || maxPrice) {
+      const priceFilter = {};
+      if (minPrice) priceFilter.$gte = parseFloat(minPrice);
+      if (maxPrice) priceFilter.$lte = parseFloat(maxPrice);
+      filter['services.price'] = priceFilter;
+    }
+
+    // Sort mapping ($geoWithin does not produce distance metadata, so distance sort is unavailable)
+    const sortMap = {
+      rating: { 'ratings.average': -1 },
+      experience: { experience: -1 },
+      newest: { createdAt: -1 },
+      price_asc: { 'services.price': 1 },
+      price_desc: { 'services.price': -1 },
+    };
+    const sortQuery = sortMap[sort] || sortMap.rating;
+
+    // Pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [pujarisDocs, total] = await Promise.all([
+      PriestProfile.find(filter)
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(limitNum)
+        .select(
+          'userId services ratings currentAvailability location experience religiousTradition specializations verificationStatus profilePicture'
+        )
+        .populate('userId', 'name profilePicture languagesSpoken')
+        .populate('services.ceremonyId', 'name category duration')
+        .lean(),
+      PriestProfile.countDocuments(filter),
+    ]);
 
     const pujaris = pujarisDocs.map((p) => ({
-      ...p,
+      _id: p._id,
+      userId: p.userId?._id,
       name: p.userId?.name || 'Unknown Priest',
-      phone: p.userId?.phone,
-      rating: p.ratings,
+      profilePicture: p.profilePicture || p.userId?.profilePicture?.url,
+      primarySpecialization: p.specializations?.[0]?.name || '',
+      rating: p.ratings?.average || 0,
+      reviewCount: p.ratings?.count || 0,
+      startingPrice: p.services?.length ? Math.min(...p.services.map((s) => s.price)) : 0,
+      experienceYears: p.experience || 0,
+      services: p.services || [],
+      verificationStatus: p.verificationStatus,
     }));
 
-    res.status(200).json({ pujaris });
+    res.status(200).json({
+      success: true,
+      data: {
+        pujaris,
+        pagination: {
+          total,
+          page: pageNum,
+          limit: limitNum,
+          hasMore: pageNum * limitNum < total,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// List instant bookings still awaiting a priest (broadcast feed)
+exports.getInstantAvailable = async (req, res, next) => {
+  try {
+    const bookings = await bookingService.getInstantAvailable({ limit: req.query.limit });
+    res.status(200).json({ success: true, data: bookings });
   } catch (error) {
     next(error);
   }
@@ -188,7 +337,7 @@ exports.getPendingActions = async (req, res, next) => {
       status: 'confirmed',
     });
 
-    const actions = dueBookings.data
+    const actions = dueBookings.data.all
       .filter((b) => new Date(b.date) < now)
       .map((b) => ({
         ...b,
@@ -204,48 +353,188 @@ exports.getPendingActions = async (req, res, next) => {
 };
 
 // Upload document
+const ALLOWED_DOCUMENT_TYPES = [
+  'profile_picture',
+  'government_id',
+  'religious_certificate',
+  'other',
+];
+
 exports.uploadDocument = async (req, res, next) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-    const result = await priestService.uploadDocument(req.user.id, req.file, req.body.documentType);
+    const { documentType } = req.body;
+    if (!documentType || !ALLOWED_DOCUMENT_TYPES.includes(documentType)) {
+      return res.status(400).json({
+        message: `Invalid documentType. Must be one of: ${ALLOWED_DOCUMENT_TYPES.join(', ')}`,
+      });
+    }
+    const result = await priestService.uploadDocument(req.user.id, req.file, documentType);
     res.status(200).json(result);
   } catch (error) {
     next(error);
   }
 };
 
-// Submit verification (Mock)
+// Submit verification
 exports.submitVerification = async (req, res, next) => {
   try {
-    await PriestProfile.findOneAndUpdate({ userId: req.user.id }, { isVerified: false }); // Pending review
-    res.status(200).json({ message: 'Verification profile submitted for review.' });
+    const profile = await PriestProfile.findOne({ userId: req.user.id });
+    if (!profile) {
+      return res.status(404).json({ success: false, message: 'Priest profile not found' });
+    }
+
+    if (!profile.services || profile.services.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must add at least one service before submitting for verification.',
+      });
+    }
+
+    const hasGovernmentId = (profile.verificationDocuments || []).some(
+      (d) => d.type === 'government_id' && d.url
+    );
+    if (!hasGovernmentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must upload a government ID document before submitting for verification.',
+      });
+    }
+
+    profile.verificationStatus = 'pending';
+    profile.onboardingCompleted = true;
+    // isVerified stays false until admin approves; pre-save hook keeps it in sync
+    await profile.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Verification profile submitted for review.',
+    });
   } catch (error) {
     next(error);
   }
 };
 
-// Get document (Serving buffer)
+// Get document — returns a short-lived presigned URL (never exposes the raw S3 key)
 exports.getDocument = async (req, res, next) => {
   try {
     const profile = await PriestProfile.findOne({ userId: req.user.id });
     const doc = profile?.verificationDocuments.find((d) => d.type === req.params.documentType);
-    if (!doc) return res.status(404).json({ message: 'Document not found' });
-
-    res.set('Content-Type', doc.contentType);
-    res.send(doc.data);
+    if (!doc?.url) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+    const presignedUrl = await getPresignedUrl(doc.url, 3600);
+    res.status(200).json({ success: true, data: { url: presignedUrl } });
   } catch (error) {
     next(error);
   }
 };
 
-// Mock acceptInstantBooking
+// Accept an instant booking (priest claims a 'searching' broadcast request)
 exports.acceptInstantBooking = async (req, res, next) => {
   try {
     const { bookingId } = req.body;
-    const booking = await bookingService.updateBookingStatus(bookingId, req.user.id, {
-      status: 'confirmed',
-    });
+    if (!bookingId) {
+      return res.status(400).json({ success: false, message: 'Valid booking ID is required' });
+    }
+
+    const booking = await bookingService.acceptInstantBooking(bookingId, req.user.id);
     res.status(200).json({ message: 'Instant booking accepted', booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getPublicProfile = async (req, res, next) => {
+  try {
+    const { priestProfileId } = req.params;
+
+    const profile = await PriestProfile.findById(priestProfileId)
+      .select(
+        'userId services ratings experience description religiousTradition availability location currentAvailability isVerified verificationStatus specializations serviceRadiusKm ceremonyCount profilePicture'
+      )
+      .populate('userId', 'name profilePicture languagesSpoken')
+      .populate('services.ceremonyId', 'name description')
+      .lean();
+
+    if (!profile || !profile.isVerified) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pandit profile not found',
+      });
+    }
+
+    // Strip sensitive fields
+    const publicProfile = {
+      _id: profile._id,
+      userId: profile.userId?._id,
+      name: profile.userId?.name,
+      profilePicture: profile.profilePicture,
+      experience: profile.experience,
+      religiousTradition: profile.religiousTradition,
+      description: profile.description,
+      services: profile.services,
+      languages: profile.userId?.languagesSpoken || [],
+      ratings: profile.ratings,
+      specializations: profile.specializations,
+      serviceRadiusKm: profile.serviceRadiusKm,
+      ceremonyCount: profile.ceremonyCount,
+      currentAvailability: {
+        status: profile.currentAvailability?.status,
+      },
+      availability: {
+        weeklySchedule: profile.availability?.weeklySchedule,
+      },
+      verificationStatus: profile.verificationStatus,
+      isVerified: profile.isVerified,
+    };
+
+    res.status(200).json({ success: true, data: publicProfile });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getPublicReviews = async (req, res, next) => {
+  try {
+    const { priestProfileId } = req.params;
+    const page = parseInt(req.query.page) || 1;
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    const Rating = require('../models/rating');
+
+    // Step 1: resolve PriestProfile → User._id
+    const profile = await PriestProfile.findById(priestProfileId).select('userId').lean();
+
+    if (!profile) {
+      return res.status(404).json({
+        success: false,
+        message: 'Profile not found',
+      });
+    }
+
+    // Step 2: query Rating using User._id
+    const [reviews, total] = await Promise.all([
+      Rating.find({ priestId: profile.userId })
+        .populate('userId', 'name profilePicture') // devotee info
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      Rating.countDocuments({ priestId: profile.userId }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          total,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          hasMore: parseInt(page) * parseInt(limit) < total,
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }

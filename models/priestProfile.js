@@ -141,6 +141,9 @@ const priestProfileSchema = new mongoose.Schema({
     of: Number,
   },
 
+  // Denormalized from User.languagesSpoken for search filtering
+  languagesSpoken: { type: [String], default: [] },
+
   ceremonyCount: { type: Number, default: 0 },
   cancelledCount: { type: Number, default: 0 },
   noShowCount: { type: Number, default: 0 },
@@ -153,6 +156,16 @@ const priestProfileSchema = new mongoose.Schema({
     default: 'incomplete',
   },
   rejectionReason: String,
+  onboardingCurrentStep: {
+    type: Number,
+    default: 1,
+    min: 1,
+    max: 6,
+  },
+  onboardingCompleted: {
+    type: Boolean,
+    default: false,
+  },
   sampradaya: String,
 
   // Real-time status
@@ -203,8 +216,7 @@ const priestProfileSchema = new mongoose.Schema({
         enum: ['government_id', 'religious_certificate', 'other'],
         required: true,
       },
-      data: Buffer,
-      contentType: String,
+      url: { type: String, default: null }, // S3 key — presigned URL generated on demand
       fileName: String,
       uploadDate: { type: Date, default: Date.now },
       status: {
@@ -229,11 +241,32 @@ const priestProfileSchema = new mongoose.Schema({
   ],
 });
 
+// Keep isVerified and verificationStatus in sync — one source sets the other
+priestProfileSchema.pre('save', function (next) {
+  if (this.isModified('verificationStatus')) {
+    this.isVerified = this.verificationStatus === 'approved';
+  } else if (this.isModified('isVerified')) {
+    if (this.isVerified) {
+      this.verificationStatus = 'approved';
+    } else if (this.verificationStatus === 'approved') {
+      this.verificationStatus = 'pending';
+    }
+  }
+  next();
+});
+
 // Very important: For radius search
 priestProfileSchema.index({ location: '2dsphere' });
 
 priestProfileSchema.index({ verificationStatus: 1, isVerified: 1 });
-priestProfileSchema.index({ "currentAvailability.status": 1 });
-priestProfileSchema.index({ "ratings.average": -1 });
+priestProfileSchema.index({ 'currentAvailability.status': 1 });
+priestProfileSchema.index({ 'ratings.average': -1 });
+priestProfileSchema.index({ isVerified: 1 });
+// Compound index for the common "available verified priests by rating" query
+priestProfileSchema.index({
+  isVerified: 1,
+  'currentAvailability.status': 1,
+  'ratings.average': -1,
+});
 
 module.exports = mongoose.model('PriestProfile', priestProfileSchema);

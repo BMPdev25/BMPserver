@@ -5,6 +5,8 @@ const User = require('../models/user');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
 const Review = require('../models/review');
+const PriestProfile = require('../models/priestProfile');
+const Ceremony = require('../models/ceremony');
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res, next) => {
@@ -23,8 +25,11 @@ exports.getAllPriests = async (req, res, next) => {
         hasUserId: !!priest.userId,
         location: priest.userId?.location,
         profilePicture: priest.profilePicture,
-        rating: priest.ratings,
-        languages: priest.userId?.languagesSpoken?.map((l) => l.name) || [],
+        ratings: {
+          average: priest.ratings?.average ?? 0,
+          count: priest.ratings?.count ?? 0,
+        },
+        languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
       })),
     });
   } catch (error) {
@@ -35,7 +40,7 @@ exports.getAllPriests = async (req, res, next) => {
 // Search for priests
 exports.searchPriests = async (req, res, next) => {
   try {
-    const { ceremony, city, date, religion, minRating, page = 1, limit = 10 } = req.query;
+    const { ceremony, city, religion, minRating, page = 1, limit = 10 } = req.query;
 
     // Build query filter
     const filter = {};
@@ -45,38 +50,30 @@ exports.searchPriests = async (req, res, next) => {
     if (ceremony) {
       preQueries.push(
         Ceremony.findOne({ name: new RegExp(ceremony, 'i'), isActive: true })
-          .select('_id').lean()
-          .then(doc => {
+          .select('_id')
+          .lean()
+          .then((doc) => {
             if (doc) filter['services.ceremonyId'] = doc._id;
             return !!doc;
           })
       );
     }
 
-    // 2. City Lookup
+    // 2. City Lookup — filter on PriestProfile.address.town (User has no location.city field)
     if (city) {
-      preQueries.push(
-        User.find({ 'location.city': new RegExp(city, 'i') })
-          .select('_id').lean()
-          .then(users => {
-            if (users.length > 0) filter.userId = { $in: users.map(u => u._id) };
-            return users.length > 0;
-          })
-      );
+      filter['address.town'] = new RegExp(city, 'i');
     }
 
     // 3. Search Term Lookup (Name)
     if (req.query.search) {
       preQueries.push(
-        User.find({ name: new RegExp(req.query.search, "i") })
-          .select('_id').lean()
-          .then(users => {
-            const userIds = users.map(u => u._id);
-            const searchRegex = new RegExp(req.query.search, "i");
-            filter.$or = [
-              { userId: { $in: userIds } },
-              { description: searchRegex }
-            ];
+        User.find({ name: new RegExp(req.query.search, 'i') })
+          .select('_id')
+          .lean()
+          .then((users) => {
+            const userIds = users.map((u) => u._id);
+            const searchRegex = new RegExp(req.query.search, 'i');
+            filter.$or = [{ userId: { $in: userIds } }, { description: searchRegex }];
             return true;
           })
       );
@@ -84,7 +81,7 @@ exports.searchPriests = async (req, res, next) => {
 
     // Execute pre-queries in parallel
     const results = await Promise.all(preQueries);
-    
+
     // If a ceremony was requested but not found, return empty results immediately
     if (ceremony && results[0] === false) {
       return res.status(200).json({
@@ -111,10 +108,7 @@ exports.searchPriests = async (req, res, next) => {
     // Add verification criteria (Approved or Pending)
     // We combine this with existing $or if it exists, or create a new one
     const verificationCriteria = {
-      $or: [
-        { verificationStatus: { $in: ['approved', 'pending'] } },
-        { isVerified: true }
-      ]
+      $or: [{ verificationStatus: { $in: ['approved', 'pending'] } }, { isVerified: true }],
     };
 
     // If we already have an $or (from search term), we need to wrap everything in an $and
@@ -122,44 +116,42 @@ exports.searchPriests = async (req, res, next) => {
     let finalFilter = filter;
     if (filter.$or) {
       finalFilter = {
-        $and: [
-          filter,
-          verificationCriteria
-        ]
+        $and: [filter, verificationCriteria],
       };
     } else {
       Object.assign(finalFilter, verificationCriteria);
     }
 
     // Get priest profiles with user details
-    const priests = await PriestProfile.find(finalFilter)
-      .populate({
-        path: "userId",
-        select: "name email phone location languagesSpoken",
-        populate: { path: "languagesSpoken", select: "name" }
-      })
-      .populate("services.ceremonyId", "name")
-      .select("userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate")
-      .sort({ "ratings.average": -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .lean()
-      .exec();
+    const [priests, total] = await Promise.all([
+      PriestProfile.find(finalFilter)
+        .populate({
+          path: 'userId',
+          select: 'name profilePicture languagesSpoken',
+        })
+        .populate('services.ceremonyId', 'name category duration')
+        .select(
+          'userId experience religiousTradition profilePicture ratings ceremonyCount priceList isVerified verificationStatus currentAvailability services analytics.completionRate'
+        )
+        .sort({ 'ratings.average': -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit)
+        .lean()
+        .exec(),
+      PriestProfile.countDocuments(finalFilter),
+    ]);
 
-    const verifiedPriests = priests; 
+    const verifiedPriests = priests;
 
     // Format response
     const formattedPriests = verifiedPriests.map((priest) => ({
       _id: priest._id,
       name: priest.userId?.name || 'Unknown Name',
-      email: priest.userId?.email || '',
-      phone: priest.userId?.phone || '',
       experience: priest.experience,
       religiousTradition: priest.religiousTradition,
-      profilePicture: priest.profilePicture,
+      profilePicture: priest.profilePicture || priest.userId?.profilePicture?.url,
       rating: priest.ratings,
       ceremonyCount: priest.ceremonyCount || 0,
-      location: priest.userId?.location,
       priceList: priest.priceList,
       isVerified: priest.isVerified,
       languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
@@ -208,7 +200,7 @@ exports.getPriestDetails = async (req, res, next) => {
       profilePicture: priest.profilePicture || '',
       rating: priest.ratings || { average: 4.5, count: 50 },
       availability: priest.currentAvailability?.status || 'available',
-      languages: priest.userId?.languagesSpoken?.map((l) => l.name) || [],
+      languages: priest.userId?.languagesSpoken?.map((l) => l.name || l) || [],
       certifications: priest.specializations?.map((s) => s.certification).filter(Boolean) || [],
       ceremonyCount: priest.ceremonyCount || 0,
       completionRate: priest.analytics?.completionRate ?? 100,
@@ -255,8 +247,37 @@ exports.getNotifications = async (req, res, next) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id, targetRole: 'devotee' })
       .sort({ createdAt: -1 })
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50)
+      .lean();
     res.status(200).json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mark notification as read
+exports.markNotificationAsRead = async (req, res, next) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notificationId, userId: req.user.id, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    res.status(200).json({ message: 'Notification marked as read', notification });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Mark all notifications as read
+exports.markAllNotificationsAsRead = async (req, res, next) => {
+  try {
+    await Notification.updateMany(
+      { userId: req.user.id, read: false, targetRole: 'devotee' },
+      { read: true, updatedAt: new Date() }
+    );
+    res.status(200).json({ message: 'All notifications marked as read' });
   } catch (error) {
     next(error);
   }

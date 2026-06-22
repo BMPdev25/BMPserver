@@ -1,5 +1,4 @@
 // controllers/walletController.js
-const Wallet = require('../models/wallet');
 const Transaction = require('../models/transaction');
 const { initiateBankTransfer } = require('../config/razorpay');
 const { getOrCreateWallet } = require('../services/commissionEngine');

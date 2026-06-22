@@ -22,13 +22,25 @@ const walletRoutes = require('./routes/walletRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const { scheduleReminders } = require('./jobs/cronJobs');
+const {
+  scheduleReminders,
+  schedulePushReminders,
+  scheduleExpiredPaymentCleanup,
+  scheduleStaleSearchingCleanup,
+  scheduleInstantExpiryCleanup,
+} = require('./jobs/cronJobs');
 
 // Load environment variables
 dotenv.config();
 
 // Start cron jobs
-scheduleReminders();
+if (process.env.NODE_ENV !== 'test') {
+  scheduleReminders();
+  schedulePushReminders();
+  scheduleExpiredPaymentCleanup();
+  scheduleStaleSearchingCleanup();
+  scheduleInstantExpiryCleanup();
+}
 
 // Create Express app
 const app = express();
@@ -48,39 +60,38 @@ io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('register', (userId) => {
-    if (userId) {
-      userSockets.set(userId.toString(), socket.id);
-      socket.userId = userId.toString();
-      console.log(`User ${userId} registered with socket ${socket.id}`);
-    }
+    if (!userId) return;
+    userSockets.set(userId.toString(), socket.id);
+    socket.userId = userId.toString();
+    console.log(`[Socket] ${userId} registered with socket ${socket.id}`);
   });
 
   socket.on('disconnect', () => {
     if (socket.userId) {
       userSockets.delete(socket.userId);
-      console.log(`User ${socket.userId} disconnected`);
+      console.log(`[Socket] ${socket.userId} disconnected`);
     }
   });
 });
 
-// Make io and userSockets accessible in controllers
+// Make io and userSockets accessible in controllers (via req.app) and in
+// services that have no request context (via globals — used by the instant
+// booking broadcast).
 app.set('io', io);
 app.set('userSockets', userSockets);
+global.io = io;
+global.userSockets = userSockets;
 
 // Security and performance middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Disable CSP for development
-  })
-);
+app.use(helmet());
 app.use(compression());
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(
   cors({
-    origin: '*',
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
     credentials: true,
   })
 );
@@ -128,6 +139,19 @@ if (require.main === module) {
     console.log(`Server running on 0.0.0.0:${PORT}`);
     console.log('Socket.IO enabled for real-time features');
   });
+
+  const shutdown = (signal) => {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      });
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = { app, server };
