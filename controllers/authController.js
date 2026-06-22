@@ -28,6 +28,7 @@ exports.firebaseSync = async (req, res) => {
     const {
       userType: rawUserType,
       name,
+      phone: bodyPhone,
       pushToken,
       languagesSpoken,
       experience,
@@ -84,7 +85,7 @@ exports.firebaseSync = async (req, res) => {
         expoPushToken: pushToken || null,
         languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
         ...(email ? { email } : {}),
-        ...(phone_number ? { phone: phone_number } : {}),
+        ...(phone_number ? { phone: phone_number } : bodyPhone ? { phone: bodyPhone } : {}),
       });
       await user.save();
 
