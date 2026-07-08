@@ -66,7 +66,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
       rzpOrderId: 'order_ok',
       rzpPaymentId: 'pay_ok',
       rzpSignature: sign('order_ok', 'pay_ok'),
-    })
+    }, devotee._id)
 
     expect(result.paymentStatus).toBe('completed')
     expect(result.paymentDetails.rzpPaymentId).toBe('pay_ok')
@@ -88,7 +88,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
         rzpOrderId: 'order_bad',
         rzpPaymentId: 'pay_bad',
         rzpSignature: 'deadbeef_not_a_real_signature',
-      })
+      }, devotee._id)
     ).rejects.toMatchObject({ statusCode: 400, message: /verification failed/i })
 
     const fromDb = await Booking.findById(booking._id)
@@ -111,7 +111,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
         rzpOrderId: 'order_attacker',
         rzpPaymentId: 'pay_x',
         rzpSignature: sign('order_attacker', 'pay_x'),
-      })
+      }, devotee._id)
     ).rejects.toMatchObject({ statusCode: 400, message: /mismatch/i })
 
     const fromDb = await Booking.findById(booking._id)
@@ -131,7 +131,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
         rzpOrderId: 'order_late',
         rzpPaymentId: 'pay_late',
         rzpSignature: sign('order_late', 'pay_late'),
-      })
+      }, devotee._id)
     ).rejects.toMatchObject({ statusCode: 410 })
 
     const fromDb = await Booking.findById(booking._id)
@@ -146,7 +146,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
         rzpOrderId: 'o',
         rzpPaymentId: 'p',
         rzpSignature: sign('o', 'p'),
-      })
+      }, devotee._id)
     ).rejects.toMatchObject({ statusCode: 404 })
   })
 
@@ -163,7 +163,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
       rzpOrderId: 'order_inst',
       rzpPaymentId: 'pay_inst',
       rzpSignature: sign('order_inst', 'pay_inst'),
-    })
+    }, devotee._id)
 
     expect(result.paymentStatus).toBe('completed')
     expect(result.status).toBe('confirmed')
@@ -183,7 +183,7 @@ describe('bookingService.verifyPayment — signature verification', () => {
       rzpOrderId: 'order_sched',
       rzpPaymentId: 'pay_sched',
       rzpSignature: sign('order_sched', 'pay_sched'),
-    })
+    }, devotee._id)
 
     expect(result.paymentStatus).toBe('completed')
     expect(result.status).toBe('pending')

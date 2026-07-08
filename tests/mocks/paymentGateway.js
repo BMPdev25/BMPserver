@@ -2,6 +2,18 @@
  * Mock implementation of Razorpay for integration testing.
  * Simulates external API calls and webhook triggers.
  */
+const crypto = require('crypto');
+
+// Computes the same HMAC-SHA256 signature bookingService.verifyPayment expects
+// (hmac(RAZORPAY_KEY_SECRET, `${orderId}|${paymentId}`)), using the real
+// RAZORPAY_KEY_SECRET loaded from .env.test — so signature verification is
+// genuinely exercised in tests rather than bypassed.
+const signPayment = (orderId, paymentId) =>
+  crypto
+    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+    .update(`${orderId}|${paymentId}`)
+    .digest('hex');
+
 module.exports = {
   orders: {
     create: jest.fn().mockResolvedValue({
@@ -24,4 +36,5 @@ module.exports = {
   },
   // Mock for verifying webhook signature
   validateWebhookSignature: jest.fn().mockReturnValue(true),
+  signPayment,
 };
