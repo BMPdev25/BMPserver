@@ -115,6 +115,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Register API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/priest', priestRoutes); // Changed from /api/priests to /api/priest

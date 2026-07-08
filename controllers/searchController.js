@@ -70,7 +70,7 @@ const universalSearch = async (req, res) => {
           path: 'priestProfile',
           model: 'PriestProfile',
           select:
-            'experience religiousTradition description ratings priceList currentAvailability serviceAreas',
+            'experience religiousTradition description ratings services currentAvailability serviceAreas',
           match: religiousTradition
             ? { religiousTradition: { $regex: escapeRegex(religiousTradition), $options: 'i' } }
             : {},
@@ -82,12 +82,25 @@ const universalSearch = async (req, res) => {
       // Filter priests by price range if provided
       let filteredPriests = priests.filter((priest) => priest.priestProfile);
 
+      // Prices come from the active services[].price field (the legacy priceList
+      // Map is empty, which made every price read ₹0). The schema has no per-service
+      // "active" flag, so an active service is simply one with a numeric price.
+      const servicePrices = (profile) =>
+        (profile.services || [])
+          .map((s) => s?.price)
+          .filter((p) => typeof p === 'number');
+      // "From" price for a priest = cheapest service they offer.
+      const startingPriceOf = (profile) => {
+        const prices = servicePrices(profile);
+        return prices.length ? Math.min(...prices) : null;
+      };
+
       if (priceRange) {
         const [minPrice, maxPrice] = priceRange.split('-').map(Number);
         filteredPriests = filteredPriests.filter((priest) => {
-          const prices = Object.values(priest.priestProfile.priceList || {});
-          const avgPrice = prices.length ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
-          return avgPrice >= minPrice && avgPrice <= maxPrice;
+          const startingPrice = startingPriceOf(priest.priestProfile);
+          if (startingPrice === null) return false;
+          return startingPrice >= minPrice && startingPrice <= maxPrice;
         });
       }
 
@@ -100,10 +113,8 @@ const universalSearch = async (req, res) => {
           break;
         case 'price':
           filteredPriests.sort((a, b) => {
-            const aVals = Object.values(a.priestProfile.priceList || {});
-            const bVals = Object.values(b.priestProfile.priceList || {});
-            const aPrice = aVals.length ? Math.min(...aVals) : Infinity;
-            const bPrice = bVals.length ? Math.min(...bVals) : Infinity;
+            const aPrice = startingPriceOf(a.priestProfile) ?? Infinity;
+            const bPrice = startingPriceOf(b.priestProfile) ?? Infinity;
             return aPrice - bPrice;
           });
           break;
@@ -116,7 +127,7 @@ const universalSearch = async (req, res) => {
       }
 
       searchResults.priests = filteredPriests.map((priest) => {
-        const prices = Object.values(priest.priestProfile.priceList || {});
+        const prices = servicePrices(priest.priestProfile);
         return {
           id: priest._id,
           name: priest.name,
@@ -126,6 +137,7 @@ const universalSearch = async (req, res) => {
           rating: priest.priestProfile.ratings,
           // ceremonies: priest.priestProfile.ceremonies, // removed
           description: priest.priestProfile.description,
+          startingPrice: prices.length ? Math.min(...prices) : 0,
           priceRange: {
             min: prices.length ? Math.min(...prices) : 0,
             max: prices.length ? Math.max(...prices) : 0,

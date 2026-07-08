@@ -22,6 +22,12 @@ router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
 
 // Notification routes
 router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifications);
+router.get(
+  '/notifications/unread-count',
+  protect,
+  devoteeOnly,
+  devoteeController.getUnreadNotificationCount
+);
 router.put(
   '/notifications/:notificationId/read',
   protect,

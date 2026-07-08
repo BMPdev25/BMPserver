@@ -6,14 +6,12 @@ const {
   getBookingDetails,
   createBooking,
   createInstantBooking,
-  updateBookingStatus,
   markAsCompleted,
   cancelBookingByDevotee,
   createPaymentOrder,
   verifyPayment,
   getPaymentDetails,
 } = require('../controllers/bookingController');
-// const { bookInstantCeremony } = require('../controllers/devoteeController'); // Missing implementation
 const { protect, verifiedPriestOnly } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
 const {
@@ -64,7 +62,9 @@ router.post(
 );
 
 // Booking status management
-router.put('/:bookingId/status', verifiedPriestOnly, updateBookingStatus);
+// NOTE: priest status changes go through PUT /priest/bookings/:id/status
+// (priestController.updateBookingStatus). The previously-duplicated
+// PUT /bookings/:id/status route had no frontend callers and was removed.
 router.put('/:bookingId/cancel-devotee', cancelBookingRules, validate, cancelBookingByDevotee);
 router.post('/:bookingId/complete', verifiedPriestOnly, markAsCompleted);
 

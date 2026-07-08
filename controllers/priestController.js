@@ -118,11 +118,14 @@ exports.getEarnings = async (req, res, next) => {
 // (balance checks, pending transaction, bank transfer, refund-on-failure).
 exports.requestWithdrawal = (req, res, next) => walletController.requestWithdrawal(req, res, next);
 
-// Get transactions history
+// Get transactions history (paginated — drives the "load more" list)
 exports.getTransactions = async (req, res, next) => {
   try {
-    const { transactions } = await priestService.getEarnings(req.user.id);
-    res.status(200).json(transactions);
+    const { data, pagination } = await priestService.getTransactions(req.user.id, {
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.status(200).json({ success: true, data, pagination });
   } catch (error) {
     next(error);
   }
@@ -133,6 +136,21 @@ exports.getNotifications = async (req, res, next) => {
   try {
     const notifications = await priestService.getNotifications(req.user.id, req.query);
     res.status(200).json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get unread notification count — lightweight badge endpoint (avoids fetching
+// the full notification list just to count unread ones)
+exports.getUnreadNotificationCount = async (req, res, next) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user.id,
+      targetRole: 'priest',
+      read: false,
+    });
+    res.status(200).json({ success: true, data: { count } });
   } catch (error) {
     next(error);
   }
@@ -239,10 +257,21 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['ratings.average'] = { $gte: parseFloat(minRating) };
     }
 
-    // Language filter
+    // Language filter — resolve against User.languagesSpoken, which is the source
+    // of truth. PriestProfile.languagesSpoken is only a denormalized copy and can
+    // drift (e.g. when a priest updates languages via the generic /users/profile
+    // path, which does not touch the profile copy), so filtering it would silently
+    // drop matching priests. Look up the matching User ids first, then constrain
+    // the profile query by userId.
     if (languages) {
       const langArray = Array.isArray(languages) ? languages : [languages];
-      filter['languagesSpoken'] = { $in: langArray };
+      const matchingUsers = await User.find({
+        userType: 'priest',
+        languagesSpoken: { $in: langArray },
+      })
+        .select('_id')
+        .lean();
+      filter.userId = { $in: matchingUsers.map((u) => u._id) };
     }
 
     // City/town filter

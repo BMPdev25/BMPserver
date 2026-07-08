@@ -17,7 +17,7 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['booking', 'payment', 'reminder', 'general', 'withdrawal'],
+    enum: ['booking', 'payment', 'reminder', 'general', 'withdrawal', 'system'],
     required: true,
   },
   targetRole: {
@@ -45,8 +45,9 @@ const notificationSchema = new mongoose.Schema({
 
 // Create indexes for better query performance
 notificationSchema.index({ userId: 1, createdAt: -1 });
-notificationSchema.index({ userId: 1, read: 1 });
 notificationSchema.index({ createdAt: -1 });
+// Serves both {userId, read} and {userId, read, createdAt} queries — a separate
+// {userId, read} index would be a redundant prefix of this compound one.
 notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
 
 // Update the updatedAt field before saving

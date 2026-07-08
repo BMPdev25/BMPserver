@@ -5,7 +5,7 @@ const {
   getUserReviews,
   getRecentReviews,
 } = require('../controllers/reviewController');
-const { protect } = require('../middleware/authMiddleware'); // Assuming this exists
+const { protect } = require('../middleware/authMiddleware');
 
 router.post('/submit', protect, submitReview);
 router.get('/user/:userId', getUserReviews);

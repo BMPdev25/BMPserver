@@ -233,6 +233,21 @@ exports.getNotifications = async (req, res, next) => {
   }
 };
 
+// Get unread notification count — lightweight badge endpoint (avoids fetching
+// the full notification list just to count unread ones)
+exports.getUnreadNotificationCount = async (req, res, next) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user.id,
+      targetRole: 'devotee',
+      read: false,
+    });
+    res.status(200).json({ success: true, data: { count } });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Mark notification as read
 exports.markNotificationAsRead = async (req, res, next) => {
   try {

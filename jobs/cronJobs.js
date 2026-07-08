@@ -35,28 +35,12 @@ const scheduleReminders = () => {
         // guarded by sendReminder's 2-hour existence check.
         const hoursUntilBooking = bookingDateTime.diff(now, 'hours', true);
 
-        // 1. Day Before Reminder (Approx 24 hours before)
-        if (hoursUntilBooking > 23.5 && hoursUntilBooking <= 24.5) {
-          // Notify Devotee
-          await sendReminder(
-            booking.devoteeId,
-            booking._id,
-            'Upcoming Puja Tomorrow',
-            `Your booking for ${booking.ceremonyType} is scheduled for tomorrow at ${booking.startTime}.`,
-            'devotee'
-          );
+        // NOTE: the 24h "tomorrow" reminder is owned solely by schedulePushReminders
+        // (the daily 8:30 IST push job). It used to also fire here, which delivered
+        // the devotee and priest two notifications for the same booking. This hourly
+        // job now only handles the 2-hour "starting soon" reminder.
 
-          // Notify Priest
-          await sendReminder(
-            booking.priestId,
-            booking._id,
-            'Upcoming Puja Tomorrow',
-            `You have a ${booking.ceremonyType} scheduled tomorrow at ${booking.startTime}.`,
-            'priest'
-          );
-        }
-
-        // 2. Morning-Of Reminder (Approx 2 hours before)
+        // Morning-Of Reminder (Approx 2 hours before)
         if (hoursUntilBooking > 1.5 && hoursUntilBooking <= 2.5) {
           // Notify Devotee
           await sendReminder(

@@ -51,6 +51,7 @@ router.get('/transactions', verifiedPriestOnly, priestController.getTransactions
 
 // Notifications available to all priests
 router.get('/notifications', priestController.getNotifications);
+router.get('/notifications/unread-count', priestController.getUnreadNotificationCount);
 router.put('/notifications/:notificationId/read', priestController.markNotificationAsRead);
 router.put('/notifications/mark-all-read', priestController.markAllNotificationsAsRead);
 

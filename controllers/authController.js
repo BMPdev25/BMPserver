@@ -159,7 +159,6 @@ exports.firebaseSync = async (req, res) => {
       email: user.email,
       phone: user.phone,
       userType: user.userType,
-      firebaseUid: user.firebaseUid,
       profilePicture: user.profilePicture || null,
       notifications: user.notifications || null,
       profileCompleted,

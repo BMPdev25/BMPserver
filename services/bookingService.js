@@ -791,66 +791,94 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
 
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
+    const priestShare = booking.basePrice;
+    const commissionAmount = booking.platformFee;
+
+    // Ensure the wallet exists before the ledger transaction. (Kept outside the
+    // session so a brand-new wallet is committed independently of the credit.)
+    const wallet = await getOrCreateWallet(booking.priestId);
+
+    // All four ledger writes must commit together or not at all — a partial
+    // failure here is financial drift (e.g. wallet credited but no Transaction
+    // row, or revenue recorded without crediting the priest). Wrap them in a
+    // single MongoDB transaction (Atlas supports sessions).
+    const session = await mongoose.startSession();
     try {
-      const priestShare = booking.basePrice;
-      const commissionAmount = booking.platformFee;
+      await session.withTransaction(async () => {
+        // ATOMIC idempotency gate: the unique index on (bookingId,
+        // type='credit_for_booking') prevents double-credit even under
+        // concurrent requests. A duplicate throws error.code 11000, which
+        // aborts the whole transaction and is handled as a no-op below.
+        // (create() must use the array form to accept a session.)
+        await Transaction.create(
+          [
+            {
+              priestId: booking.priestId,
+              walletId: wallet._id,
+              bookingId: booking._id,
+              type: 'credit_for_booking',
+              direction: 'inflow',
+              amount: priestShare,
+              status: 'completed',
+              description: `Earnings for ${booking.ceremonyType}`,
+            },
+          ],
+          { session }
+        );
 
-      // Ensure wallet exists before creating the transaction
-      const wallet = await getOrCreateWallet(booking.priestId);
+        // Atomic $inc — safe even if called concurrently (no read-modify-write)
+        await Wallet.findOneAndUpdate(
+          { priestId: booking.priestId },
+          { $inc: { currentBalance: priestShare, totalCredited: priestShare } },
+          { session }
+        );
 
-      // ATOMIC gate: unique index on (bookingId, type='credit_for_booking') prevents
-      // double-credit even under concurrent requests. If this throws error.code 11000,
-      // another request already processed this booking.
-      await Transaction.create({
-        priestId: booking.priestId,
-        walletId: wallet._id,
-        bookingId: booking._id,
-        type: 'credit_for_booking',
-        direction: 'inflow',
-        amount: priestShare,
-        status: 'completed',
-        description: `Earnings for ${booking.ceremonyType}`,
+        await CompanyRevenue.create(
+          [
+            {
+              bookingId: booking._id,
+              priestId: booking.priestId,
+              totalAmount: booking.totalAmount,
+              commissionAmount: commissionAmount,
+              commissionRate: PLATFORM_FEE_PERCENT,
+              priestShare: priestShare,
+            },
+          ],
+          { session }
+        );
+
+        // pendingPayments = money credited to wallet but not yet withdrawn
+        await PriestProfile.findOneAndUpdate(
+          { userId: booking.priestId },
+          {
+            $inc: {
+              ceremonyCount: 1,
+              'earnings.totalEarnings': priestShare,
+              'earnings.pendingPayments': priestShare,
+            },
+          },
+          { session }
+        );
       });
 
-      // Atomic $inc — safe even if called concurrently (no read-modify-write)
-      await Wallet.findOneAndUpdate(
-        { priestId: booking.priestId },
-        { $inc: { currentBalance: priestShare, totalCredited: priestShare } }
-      );
-
-      await CompanyRevenue.create({
-        bookingId: booking._id,
-        priestId: booking.priestId,
-        totalAmount: booking.totalAmount,
-        commissionAmount: commissionAmount,
-        commissionRate: PLATFORM_FEE_PERCENT,
-        priestShare: priestShare,
-      });
-
+      // Side-effecting push — sent only after the ledger has committed, so a
+      // transaction rollback (or duplicate-key abort) never fires a false
+      // "payment credited" notification.
       await pushService.notifyPriestPaymentCredited(
         booking.priestId._id || booking.priestId,
         booking,
         priestShare
       );
-
-      // pendingPayments = money credited to wallet but not yet withdrawn
-      await PriestProfile.findOneAndUpdate(
-        { userId: booking.priestId },
-        {
-          $inc: {
-            ceremonyCount: 1,
-            'earnings.totalEarnings': priestShare,
-            'earnings.pendingPayments': priestShare,
-          },
-        }
-      );
     } catch (e) {
       if (e.code === 11000) {
-        // Duplicate key on (bookingId, type) — already processed, not an error
+        // Duplicate key on (bookingId, type) — already processed, not an error.
+        // The transaction aborted, so nothing was credited twice.
         console.log(`[Wallet] Booking ${booking._id} already credited. Skipping.`);
       } else {
         console.warn('Ledger update failed:', e.message);
       }
+    } finally {
+      await session.endSession();
     }
   }
 
