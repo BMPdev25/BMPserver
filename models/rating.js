@@ -66,6 +66,10 @@ const ratingSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    isTestRecord: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

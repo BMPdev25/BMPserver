@@ -16,7 +16,6 @@ const Language = require('../models/language')
 const Banner = require('../models/banner')
 const CompanyRevenue = require('../models/companyRevenue')
 const Panchang = require('../models/panchang')
-const Review = require('../models/review')
 
 // ─── Category enum mapping ───────────────────────────────────────────────────
 const CATEGORY_MAP = {

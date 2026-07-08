@@ -21,7 +21,6 @@ const searchRoutes = require('./routes/searchRoutes');
 const ceremonyRoutes = require('./routes/ceremonyRoutes');
 const languageRoutes = require('./routes/languageRoutes');
 const walletRoutes = require('./routes/walletRoutes');
-const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const {
@@ -135,7 +134,6 @@ app.use('/api/search', searchRoutes);
 app.use('/api/ceremonies', ceremonyRoutes);
 app.use('/api/languages', languageRoutes);
 app.use('/api/wallet', walletRoutes);
-app.use('/api/reviews', reviewRoutes);
 app.use('/api/metadata', metadataRoutes);
 app.use('/api/admin', adminRoutes);
 
