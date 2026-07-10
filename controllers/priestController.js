@@ -5,6 +5,7 @@ const walletController = require('./walletController');
 const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
+const Ceremony = require('../models/ceremony');
 const { getPresignedUrl } = require('../services/storageService');
 const { escapeRegex } = require('../utils/escapeRegex');
 
@@ -206,6 +207,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
   try {
     const {
       ceremonyId,
+      category,
       lat,
       lng,
       radius = 50,
@@ -247,9 +249,16 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['currentAvailability.status'] = req.query.availability;
     }
 
-    // Ceremony filter (optional now)
+    // Ceremony filter (optional now). A specific ceremonyId takes priority; a
+    // category (e.g. "wedding") resolves to every Ceremony in that category
+    // since Ceremony.category is a plain string, not a reference to
+    // CeremonyCategory — so category chips must join through Ceremony rather
+    // than filtering on a CeremonyCategory ObjectId directly.
     if (ceremonyId) {
       filter['services.ceremonyId'] = ceremonyId;
+    } else if (category) {
+      const matchingCeremonies = await Ceremony.find({ category }).select('_id').lean();
+      filter['services.ceremonyId'] = { $in: matchingCeremonies.map((c) => c._id) };
     }
 
     // Rating filter
@@ -328,6 +337,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
       experienceYears: p.experience || 0,
       services: p.services || [],
       verificationStatus: p.verificationStatus,
+      currentAvailability: { status: p.currentAvailability?.status || 'offline' },
     }));
 
     res.status(200).json({

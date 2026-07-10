@@ -129,7 +129,8 @@ const universalSearch = async (req, res) => {
       searchResults.priests = filteredPriests.map((priest) => {
         const prices = servicePrices(priest.priestProfile);
         return {
-          id: priest._id,
+          _id: priest.priestProfile._id,
+          userId: priest._id,
           name: priest.name,
           profilePicture: priest.profilePicture,
           experience: priest.priestProfile.experience,
