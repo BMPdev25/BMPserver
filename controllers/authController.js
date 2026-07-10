@@ -69,6 +69,22 @@ exports.firebaseSync = async (req, res) => {
       }
     }
 
+    // Role conflict: an existing account (found either directly via this
+    // Firebase UID, or linked above via matching email/phone) belongs to a
+    // different userType than the one being registered for. Without this
+    // check the caller would be silently logged into their existing role
+    // instead of being told to use a different email (account-takeover-
+    // adjacent UX bug: a devotee attempting a priest signup with the same
+    // email would land back in the devotee account).
+    if (user && userType && user.userType !== userType) {
+      const ROLE_LABELS = { devotee: 'devotee', priest: 'pandit' };
+      return res.status(409).json({
+        success: false,
+        message: `This email is already registered as a ${ROLE_LABELS[user.userType]}. Please use a different email to register as a ${ROLE_LABELS[userType]}.`,
+        code: 'ROLE_CONFLICT',
+      });
+    }
+
     // New Registration Flow
     if (!user) {
       // userType validation — return 404 so the client knows to redirect to registration
@@ -309,6 +325,18 @@ exports.verifyOtp = async (req, res) => {
     // OTP record is deleted AFTER createCustomToken so a Firebase failure does
     // not leave a user who can no longer re-verify their phone.
     let user = await User.findOne({ phone: e164 });
+
+    // Same role-conflict guard as firebaseSync: registering with a userType
+    // that doesn't match the existing account for this phone number would
+    // otherwise silently mint a token for the wrong role.
+    if (user && userType && user.userType !== userType) {
+      const ROLE_LABELS = { devotee: 'devotee', priest: 'pandit' };
+      return res.status(409).json({
+        success: false,
+        message: `This phone number is already registered as a ${ROLE_LABELS[user.userType]}. Please use a different phone number to register as a ${ROLE_LABELS[userType]}.`,
+        code: 'ROLE_CONFLICT',
+      });
+    }
 
     if (!user) {
       if (!userType) {
