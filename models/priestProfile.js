@@ -212,6 +212,10 @@ const priestProfileSchema = new mongoose.Schema({
   specializations: [
     {
       name: String,
+      // References the master Ceremony catalog entry this specialization was
+      // picked from (onboarding Step 2), so the wizard can resume with the
+      // exact puja re-selected rather than just its display name.
+      ceremonyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ceremony' },
       experience: Number,
       certification: String,
       verificationStatus: {
