@@ -28,7 +28,7 @@ const createMemoryServer = () =>
 
 // ── Hooks used by setupFilesAfterFramework ────────────────────────────
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create({ replSet: { count: 1 } })
+  mongoServer = await createMemoryServer()
   const uri = mongoServer.getUri()
   await mongoose.connect(uri)
 })

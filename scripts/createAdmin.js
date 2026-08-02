@@ -1,7 +1,7 @@
 // scripts/createAdmin.js
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const bcrypt = require('bcryptjs');
+const admin = require('../config/firebase');
 const User = require('../models/user');
 
 dotenv.config();
@@ -17,18 +17,30 @@ const createAdmin = async () => {
     await mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' });
     console.log(`Connected to database.`);
 
+    // Firebase Auth is the source of truth for admin login credentials.
+    let firebaseUser;
+    try {
+      firebaseUser = await admin.auth().getUserByEmail(email);
+      await admin.auth().updateUser(firebaseUser.uid, { password, displayName: name });
+      console.log(`Firebase Auth user already existed for ${email}; password updated.`);
+    } catch (err) {
+      if (err.code === 'auth/user-not-found') {
+        firebaseUser = await admin.auth().createUser({ email, password, displayName: name });
+        console.log(`Firebase Auth user created for ${email}.`);
+      } else {
+        throw err;
+      }
+    }
+
     const existingUser = await User.findOne({ email });
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
     if (existingUser) {
-      console.log(`User with email ${email} already exists. Updating to admin and setting password...`);
-      existingUser.password = hashedPassword;
+      console.log(`User with email ${email} already exists. Updating to admin and linking Firebase...`);
       existingUser.userType = 'admin';
       existingUser.name = name;
       existingUser.isActive = true;
       existingUser.isVerified = true;
+      existingUser.firebaseUid = firebaseUser.uid;
       await existingUser.save();
       console.log(`Admin user updated successfully.`);
     } else {
@@ -36,11 +48,10 @@ const createAdmin = async () => {
       const newAdmin = new User({
         name,
         email,
-        password: hashedPassword,
         userType: 'admin',
         isActive: true,
         isVerified: true,
-        // Since it's admin, they don't necessarily have a phone number, but let's give a dummy or leave blank
+        firebaseUid: firebaseUser.uid,
       });
       await newAdmin.save();
       console.log(`Admin user created successfully.`);

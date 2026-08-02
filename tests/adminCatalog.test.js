@@ -1,14 +1,37 @@
 process.env.NODE_ENV = 'test';
+process.env.FIREBASE_WEB_API_KEY = 'test-web-api-key';
+
+const ADMIN_FIREBASE_UID = 'firebase-uid-admin-test';
 
 // Mock Firebase before any module loads it
 jest.mock('../config/firebase', () => ({
   auth: () => ({
     verifyIdToken: jest.fn().mockImplementation(async (token) => {
-      throw new Error('Firebase mock should not be hit for standard JWT');
+      if (token === 'valid-admin-id-token') {
+        return { uid: 'firebase-uid-admin-test' };
+      }
+      throw new Error('invalid token');
     }),
     createCustomToken: jest.fn().mockResolvedValue('mock-custom-token'),
   }),
 }));
+
+// adminAuthController exchanges email/password for an ID token via Firebase's
+// REST endpoint (the Admin SDK can't verify a password itself) — mock that
+// network call so login tests stay hermetic.
+global.fetch = jest.fn().mockImplementation(async (url, options) => {
+  const { password } = JSON.parse(options.body);
+  if (password === 'adminpassword') {
+    return {
+      ok: true,
+      json: async () => ({ idToken: 'valid-admin-id-token' }),
+    };
+  }
+  return {
+    ok: false,
+    json: async () => ({ error: { message: 'INVALID_PASSWORD' } }),
+  };
+});
 
 jest.mock('expo-server-sdk', () => ({
   Expo: class {
@@ -28,12 +51,10 @@ describe('Admin Authentication & JWT Validation', () => {
   let adminUser;
 
   beforeEach(async () => {
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash('adminpassword', salt);
     adminUser = await User.create({
       name: 'System Admin',
       email: 'admin@test.com',
-      password: hashedPassword,
+      firebaseUid: ADMIN_FIREBASE_UID,
       userType: 'admin',
       isActive: true,
       isVerified: true,
@@ -49,7 +70,7 @@ describe('Admin Authentication & JWT Validation', () => {
     expect(res.body.success).toBe(false);
   });
 
-  it('succeeds admin login with correct password and returns standard JWT', async () => {
+  it('succeeds admin login with correct password and returns a Firebase ID token', async () => {
     const res = await request(app)
       .post('/api/admin/auth/login')
       .send({ email: 'admin@test.com', password: 'adminpassword' });
