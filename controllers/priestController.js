@@ -241,7 +241,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
     // Build base filter
     const filter = {
       ...geoFilter,
-      isVerified: true,
+      verificationStatus: 'approved',
     };
 
     // Optional availability status filter (e.g. ?availability=available)
@@ -497,7 +497,7 @@ exports.getPublicProfile = async (req, res, next) => {
       .populate('services.ceremonyId', 'name description')
       .lean();
 
-    if (!profile || !profile.isVerified) {
+    if (!profile || profile.verificationStatus !== 'approved') {
       return res.status(404).json({
         success: false,
         message: 'Pandit profile not found',

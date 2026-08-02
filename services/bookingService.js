@@ -337,7 +337,7 @@ const createBooking = async (devoteeId, bookingData) => {
   }
 
   const priestProfile = await PriestProfile.findOne({ userId: priestId });
-  if (priestProfile && !priestProfile.isVerified) {
+  if (priestProfile && priestProfile.verificationStatus !== 'approved') {
     const error = new Error(
       'This priest has not been verified yet. Bookings cannot be created for unverified priests.'
     );
@@ -532,7 +532,7 @@ const broadcastInstantBooking = async (booking, options = {}) => {
   const userSockets = global.userSockets || null; // Map<userId, socketId>
 
   const availablePriests = await PriestProfile.find({
-    isVerified: true,
+    verificationStatus: 'approved',
     'currentAvailability.status': 'available',
     'services.ceremonyId': booking.ceremonyId,
   })
@@ -937,7 +937,7 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
   const priestProfile = await PriestProfile.findOne({ userId: priestId });
-  if (priestProfile && !priestProfile.isVerified) {
+  if (priestProfile && priestProfile.verificationStatus !== 'approved') {
     const error = new Error('Only verified priests can accept bookings.');
     error.statusCode = 403;
     throw error;

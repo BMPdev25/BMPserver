@@ -552,7 +552,7 @@ const unifiedSearch = async (req, res) => {
         .limit(maxResults)
         .lean(),
       PriestProfile.find({
-        isVerified: true,
+        verificationStatus: 'approved',
         $or: [
           { userId: { $in: matchingUserIds } },
           { 'services.ceremonyId': { $in: matchingCeremonyIds } },

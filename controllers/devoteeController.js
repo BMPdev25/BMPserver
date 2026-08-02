@@ -106,7 +106,7 @@ exports.searchPriests = async (req, res, next) => {
     // REMOVED: Strict 'available' filter. We want to show offline priests too for future bookings.
     // Instead, we can sort by availability or show status in UI.
 
-    const verificationCriteria = { isVerified: true };
+    const verificationCriteria = { verificationStatus: 'approved' };
 
     // If we already have an $or (from search term), we need to wrap everything in an $and
     // to ensure both the search match AND the verification criteria are met.

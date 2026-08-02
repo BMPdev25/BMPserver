@@ -81,9 +81,9 @@ exports.verifiedPriestOnly = async (req, res, next) => {
   try {
     const PriestProfile = require('../models/priestProfile');
     const profile = await PriestProfile.findOne({ userId: req.user._id })
-      .select('isVerified')
+      .select('verificationStatus')
       .lean();
-    if (!profile || !profile.isVerified) {
+    if (!profile || profile.verificationStatus !== 'approved') {
       return res.status(403).json({ message: 'Priest account is pending admin verification' });
     }
     next();

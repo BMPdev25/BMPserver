@@ -14,6 +14,7 @@ jest.mock('../../config/firebase', () => ({
 
 const request = require('supertest')
 const { app } = require('../../server')
+const PriestProfile = require('../../models/priestProfile')
 const {
   createTestDevotee,
   createTestPriest,
@@ -98,6 +99,34 @@ describe('Complete Priest Lifecycle', () => {
     expect(Array.isArray(res.body.data.pujaris)).toBe(true)
     const ids = res.body.data.pujaris.map((p) => p.userId?.toString())
     expect(ids).toContain(priestUser._id.toString())
+  })
+
+  it('5b. Approved priest still appears in listing and public profile when isVerified has drifted to false', async () => {
+    // Simulates the exact bug this test guards against: a write that touches
+    // verificationStatus through something other than PriestProfile.save()
+    // (a raw update, a manual DB edit) can leave isVerified stale. Bypass
+    // the pre-save sync hook on purpose by going through updateOne without
+    // touching verificationStatus, so isVerified stays false even though
+    // verificationStatus is 'approved'.
+    const beforeDrift = await PriestProfile.findOne({ userId: priestUser._id })
+    await PriestProfile.collection.updateOne(
+      { _id: beforeDrift._id },
+      { $set: { isVerified: false } }
+    )
+
+    const drifted = await PriestProfile.findOne({ userId: priestUser._id }).lean()
+    expect(drifted.verificationStatus).toBe('approved')
+    expect(drifted.isVerified).toBe(false)
+
+    const listRes = await request(app).get('/api/priest/available')
+    expect(listRes.status).toBe(200)
+    const listedIds = listRes.body.data.pujaris.map((p) => p.userId?.toString())
+    expect(listedIds).toContain(priestUser._id.toString())
+
+    const profileRes = await request(app).get(`/api/priest/public/${drifted._id}`)
+    expect(profileRes.status).toBe(200)
+    expect(profileRes.body.success).toBe(true)
+    expect(profileRes.body.data.userId).toBe(priestUser._id.toString())
   })
 
   it('6. Priest can view their own bookings list', async () => {

@@ -237,6 +237,29 @@ priestProfileSchema.pre('save', function (next) {
   next();
 });
 
+// The pre-save hook above only runs on document.save() — findOneAndUpdate/
+// updateOne/updateMany skip document middleware entirely, so a write that
+// sets verificationStatus through one of those (a script, a future admin
+// bulk-action, etc.) would silently leave isVerified stale. Mirror the
+// verificationStatus -> isVerified half of the sync for query-level updates.
+// This does NOT cover raw MongoDB driver writes or manual edits (Atlas/
+// Compass) — those bypass Mongoose entirely. That residual gap is why
+// callers should filter/gate on verificationStatus (the canonical field)
+// rather than isVerified wherever possible.
+function syncIsVerifiedOnQueryUpdate(next) {
+  const update = this.getUpdate();
+  if (!update) return next();
+  for (const target of [update, update.$set]) {
+    if (target && Object.prototype.hasOwnProperty.call(target, 'verificationStatus')) {
+      target.isVerified = target.verificationStatus === 'approved';
+    }
+  }
+  next();
+}
+priestProfileSchema.pre('findOneAndUpdate', syncIsVerifiedOnQueryUpdate);
+priestProfileSchema.pre('updateOne', syncIsVerifiedOnQueryUpdate);
+priestProfileSchema.pre('updateMany', syncIsVerifiedOnQueryUpdate);
+
 // Very important: For radius search
 priestProfileSchema.index({ location: '2dsphere' });
 
