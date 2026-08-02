@@ -1,10 +1,5 @@
 // services/commissionEngine.js
-// Core business logic: processes booking completion and handles wallet credits.
-
-const Booking = require('../models/booking');
 const Wallet = require('../models/wallet');
-const Transaction = require('../models/transaction');
-const CompanyRevenue = require('../models/companyRevenue');
 
 // Platform commission rate (5%)
 const COMMISSION_RATE = 0.05;
@@ -140,7 +135,6 @@ async function getOrCreateWallet(priestId) {
 }
 
 module.exports = {
-  processBookingCompletion,
   getOrCreateWallet,
   COMMISSION_RATE,
 };

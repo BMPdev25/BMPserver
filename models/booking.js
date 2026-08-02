@@ -109,15 +109,8 @@ const bookingSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'completed', 'refunded'],
+    enum: ['pending', 'completed', 'refunding', 'refunded'],
     default: 'pending',
-  },
-  paymentId: {
-    type: String,
-  },
-  paymentMethod: {
-    type: String,
-    enum: ['upi', 'card', 'other'],
   },
   createdAt: {
     type: Date,
@@ -130,12 +123,6 @@ const bookingSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now,
-  },
-  razorpayOrderId: {
-    type: String,
-  },
-  razorpayPaymentId: {
-    type: String,
   },
   cancellationReason: {
     type: String,
@@ -172,24 +159,6 @@ const bookingSchema = new mongoose.Schema({
     rzpOrderId: { type: String, default: null },
     rzpPaymentId: { type: String, default: null },
     rzpSignature: { type: String, default: null },
-  },
-  // Rating and Review
-  rating: {
-    score: {
-      type: Number,
-      min: 1,
-      max: 5,
-    },
-    review: {
-      type: String,
-    },
-    ratedAt: {
-      type: Date,
-    },
-    isRated: {
-      type: Boolean,
-      default: false,
-    },
   },
   // Real-time Status Tracking
   statusHistory: [
@@ -239,21 +208,19 @@ const bookingSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
-  itemsDeliveryRequested: {
+  devoteeDeleted: {
     type: Boolean,
     default: false,
   },
-  itemsDeliveryStatus: {
-    type: String,
-    enum: ['pending', 'shipped', 'delivered', 'not_applicable'],
-    default: 'not_applicable',
+  priestDeleted: {
+    type: Boolean,
+    default: false,
   },
 });
 
 // Create indexes for better query performance
 bookingSchema.index({ devoteeId: 1, createdAt: -1 });
 bookingSchema.index({ priestId: 1, createdAt: -1 });
-bookingSchema.index({ status: 1 });
 bookingSchema.index({ date: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ createdAt: -1 });
@@ -266,17 +233,6 @@ bookingSchema.index({ status: 1, createdAt: -1 });
 bookingSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
-});
-
-// Virtual for checking if booking is upcoming
-bookingSchema.virtual('isUpcoming').get(function () {
-  return this.date > new Date() && this.status === 'confirmed';
-});
-
-// Virtual for checking if booking can be cancelled
-bookingSchema.virtual('canCancel').get(function () {
-  const hoursUntilBooking = (this.date - new Date()) / (1000 * 60 * 60);
-  return hoursUntilBooking > 24 && this.status === 'confirmed';
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

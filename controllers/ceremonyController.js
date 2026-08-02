@@ -80,7 +80,7 @@ exports.getCeremonyWithPriests = async (req, res, next) => {
     }
 
     const priestProfiles = await PriestProfile.find({
-      isVerified: true,
+      verificationStatus: 'approved',
       'services.ceremonyId': ceremony._id,
     })
       .select(

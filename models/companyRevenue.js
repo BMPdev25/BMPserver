@@ -37,7 +37,7 @@ const companyRevenueSchema = new mongoose.Schema(
 );
 
 // Indexes
-companyRevenueSchema.index({ bookingId: 1 });
+companyRevenueSchema.index({ bookingId: 1 }, { unique: true });
 companyRevenueSchema.index({ priestId: 1 });
 companyRevenueSchema.index({ createdAt: -1 });
 

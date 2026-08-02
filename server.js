@@ -7,6 +7,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const helmet = require('helmet');
 const compression = require('compression');
+const admin = require('./config/firebase');
+const User = require('./models/user');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -121,6 +123,15 @@ app.use('/public', express.static('public'));
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
   next();
+});
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Register API routes

@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const Booking = require('../models/booking');
 const Rating = require('../models/rating');
+const Rating = require('../models/rating');
 
 // Security middleware to ensure these routes NEVER run in production
 // and require a secret key in non-production environments.
@@ -36,6 +37,7 @@ router.post('/teardown', async (req, res) => {
       deletedCount: {
         users: userResult.deletedCount,
         bookings: bookingResult.deletedCount,
+        ratings: ratingResult.deletedCount,
         ratings: ratingResult.deletedCount,
       },
     });

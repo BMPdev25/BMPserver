@@ -38,7 +38,7 @@ graph TD
     subgraph "Integrations"
         F --> K[Firebase Admin SDK]
         F --> L[Razorpay API]
-        F --> M[Cloudinary SDK]
+        F --> M[AWS S3 SDK]
         N[Cron Jobs - node-cron] --> F
     end
 
@@ -62,7 +62,7 @@ graph TD
 - **Real-time**: Socket.io
 - **Auth**: JWT & Firebase Admin SDK
 - **Financials**: Razorpay Node SDK
-- **Storage**: Cloudinary (via Multer)
+- **Storage**: AWS S3 (via Multer)
 - **Notifications**: Expo Server SDK
 - **Testing**: Jest & Supertest
 
@@ -72,7 +72,7 @@ graph TD
 
 ```text
 BMPserver/
-├── config/             # Database, Firebase, and Cloudinary configurations
+├── config/             # Database, Firebase, and S3 configurations
 ├── controllers/        # Request handlers (Parsing & Response formatting)
 ├── jobs/               # Scheduled tasks (Cron jobs)
 ├── middleware/         # Auth, validation, and error handling middleware

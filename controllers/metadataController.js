@@ -64,7 +64,7 @@ const metadataController = {
       const [categories, ceremonies, priestProfiles] = await Promise.all([
         CeremonyCategory.find({ isActive: true }).sort({ order: 1 }).lean(),
         Ceremony.find({}, '_id category').lean(),
-        PriestProfile.find({ isVerified: true }, 'services.ceremonyId').lean(),
+        PriestProfile.find({ verificationStatus: 'approved' }, 'services.ceremonyId').lean(),
       ]);
 
       // Set of ceremony IDs offered by at least one verified priest

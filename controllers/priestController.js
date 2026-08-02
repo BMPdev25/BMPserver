@@ -5,7 +5,9 @@ const walletController = require('./walletController');
 const PriestProfile = require('../models/priestProfile');
 const User = require('../models/user');
 const Notification = require('../models/notification');
+const Ceremony = require('../models/ceremony');
 const { getPresignedUrl } = require('../services/storageService');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 // Create or update priest profile
 exports.updateProfile = async (req, res, next) => {
@@ -117,11 +119,14 @@ exports.getEarnings = async (req, res, next) => {
 // (balance checks, pending transaction, bank transfer, refund-on-failure).
 exports.requestWithdrawal = (req, res, next) => walletController.requestWithdrawal(req, res, next);
 
-// Get transactions history
+// Get transactions history (paginated — drives the "load more" list)
 exports.getTransactions = async (req, res, next) => {
   try {
-    const { transactions } = await priestService.getEarnings(req.user.id);
-    res.status(200).json(transactions);
+    const { data, pagination } = await priestService.getTransactions(req.user.id, {
+      page: req.query.page,
+      limit: req.query.limit,
+    });
+    res.status(200).json({ success: true, data, pagination });
   } catch (error) {
     next(error);
   }
@@ -132,6 +137,21 @@ exports.getNotifications = async (req, res, next) => {
   try {
     const notifications = await priestService.getNotifications(req.user.id, req.query);
     res.status(200).json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Get unread notification count — lightweight badge endpoint (avoids fetching
+// the full notification list just to count unread ones)
+exports.getUnreadNotificationCount = async (req, res, next) => {
+  try {
+    const count = await Notification.countDocuments({
+      userId: req.user.id,
+      targetRole: 'priest',
+      read: false,
+    });
+    res.status(200).json({ success: true, data: { count } });
   } catch (error) {
     next(error);
   }
@@ -187,6 +207,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
   try {
     const {
       ceremonyId,
+      category,
       lat,
       lng,
       radius = 50,
@@ -220,7 +241,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
     // Build base filter
     const filter = {
       ...geoFilter,
-      isVerified: true,
+      verificationStatus: 'approved',
     };
 
     // Optional availability status filter (e.g. ?availability=available)
@@ -228,9 +249,16 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['currentAvailability.status'] = req.query.availability;
     }
 
-    // Ceremony filter (optional now)
+    // Ceremony filter (optional now). A specific ceremonyId takes priority; a
+    // category (e.g. "wedding") resolves to every Ceremony in that category
+    // since Ceremony.category is a plain string, not a reference to
+    // CeremonyCategory — so category chips must join through Ceremony rather
+    // than filtering on a CeremonyCategory ObjectId directly.
     if (ceremonyId) {
       filter['services.ceremonyId'] = ceremonyId;
+    } else if (category) {
+      const matchingCeremonies = await Ceremony.find({ category }).select('_id').lean();
+      filter['services.ceremonyId'] = { $in: matchingCeremonies.map((c) => c._id) };
     }
 
     // Rating filter
@@ -238,15 +266,26 @@ exports.getAvailablePujaris = async (req, res, next) => {
       filter['ratings.average'] = { $gte: parseFloat(minRating) };
     }
 
-    // Language filter
+    // Language filter — resolve against User.languagesSpoken, which is the source
+    // of truth. PriestProfile.languagesSpoken is only a denormalized copy and can
+    // drift (e.g. when a priest updates languages via the generic /users/profile
+    // path, which does not touch the profile copy), so filtering it would silently
+    // drop matching priests. Look up the matching User ids first, then constrain
+    // the profile query by userId.
     if (languages) {
       const langArray = Array.isArray(languages) ? languages : [languages];
-      filter['languagesSpoken'] = { $in: langArray };
+      const matchingUsers = await User.find({
+        userType: 'priest',
+        languagesSpoken: { $in: langArray },
+      })
+        .select('_id')
+        .lean();
+      filter.userId = { $in: matchingUsers.map((u) => u._id) };
     }
 
     // City/town filter
     if (city) {
-      filter['address.town'] = new RegExp(city.trim(), 'i');
+      filter['address.town'] = new RegExp(escapeRegex(city.trim()), 'i');
     }
 
     // Price filter (on services array)
@@ -298,6 +337,7 @@ exports.getAvailablePujaris = async (req, res, next) => {
       experienceYears: p.experience || 0,
       services: p.services || [],
       verificationStatus: p.verificationStatus,
+      currentAvailability: { status: p.currentAvailability?.status || 'offline' },
     }));
 
     res.status(200).json({
@@ -457,7 +497,7 @@ exports.getPublicProfile = async (req, res, next) => {
       .populate('services.ceremonyId', 'name description')
       .lean();
 
-    if (!profile || !profile.isVerified) {
+    if (!profile || profile.verificationStatus !== 'approved') {
       return res.status(404).json({
         success: false,
         message: 'Pandit profile not found',
