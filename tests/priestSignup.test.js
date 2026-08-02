@@ -63,15 +63,14 @@ describe('Priest signup — Firebase (/api/auth/sync)', () => {
     expect(profile.languagesSpoken).toEqual(['Telugu', 'Hindi'])
   })
 
-  it('allows priest registration without languagesSpoken (collected later in onboarding)', async () => {
+  it('allows priest registration with no languagesSpoken (defaults to empty array)', async () => {
     const res = await sync(
       { uid: 'fbp-2', email: 'p2@test.com', phone_number: '+919100000002' },
       { userType: 'priest', name: 'Pandit Two' }
     )
     expect(res.status).toBe(200)
-
+    expect(res.body.userType).toBe('priest')
     const user = await User.findOne({ firebaseUid: 'fbp-2' })
-    expect(user).toBeTruthy()
     expect(user.languagesSpoken).toEqual([])
   })
 
@@ -153,15 +152,14 @@ describe('Priest signup — OTP (/api/auth/verify-otp)', () => {
     expect(profile.isVerified).toBe(false)
   })
 
-  it('allows OTP priest registration without languagesSpoken (collected later in onboarding)', async () => {
+  it('allows OTP priest registration with no languagesSpoken (defaults to empty array)', async () => {
     const phone = '+919200000002'
     await OtpRecord.create({ phone, otp: '654321', attempts: 0 })
 
     const res = await verify({ phone, otp: '654321', userType: 'priest', name: 'No Lang' })
     expect(res.status).toBe(200)
-
+    expect(res.body.user.userType).toBe('priest')
     const user = await User.findOne({ phone })
-    expect(user).toBeTruthy()
     expect(user.languagesSpoken).toEqual([])
   })
 })

@@ -90,18 +90,20 @@ exports.firebaseSync = async (req, res) => {
       if (!userType) {
         return res.status(404).json({ message: 'No account found. Please register to continue.' });
       }
-      // Omit email/phone entirely when absent — Mongoose casts `undefined` to
-      // `null` when the key is present in the constructor object, which trips
-      // the unique sparse index on a second phoneless/emailless signup.
-      user = new User({
+      const newUserData = {
         name: name || decodedToken.name || 'New User',
         firebaseUid: uid,
         userType: userType,
         expoPushToken: pushToken || null,
-        languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
-        ...(email ? { email } : {}),
-        ...(phone_number ? { phone: phone_number } : bodyPhone ? { phone: bodyPhone } : {}),
-      });
+        ...(userType === 'priest' ? { languagesSpoken: languagesSpoken || [] } : {}),
+      };
+      
+      // Only set email and phone if they exist, preventing MongoDB from storing null
+      // and tripping the sparse unique index (E11000 duplicate key error { phone: null })
+      if (email) newUserData.email = email;
+      if (searchPhone) newUserData.phone = searchPhone;
+      
+      user = new User(newUserData);
       await user.save();
 
       // Handle Profiles
@@ -352,9 +354,7 @@ exports.verifyOtp = async (req, res) => {
         name: name || 'New User',
         phone: e164,
         userType: type,
-        // Optional at registration (collected during onboarding for priests), but
-        // persisted when the client does provide it so search stays in sync.
-        languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
+        ...(type === 'priest' ? { languagesSpoken: languagesSpoken || [] } : {}),
       });
       // Set firebaseUid before the first save: the schema requires `password`
       // unless firebaseUid is present, and OTP users have no password. _id is

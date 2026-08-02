@@ -54,12 +54,19 @@ exports.createBooking = async (req, res, next) => {
 
     const io = req.app.get('io');
     const userSockets = req.app.get('userSockets');
-    const priestSocketId = userSockets.get(
+    const socketIds = userSockets.get(
       booking.priestId._id?.toString() ?? booking.priestId.toString()
     );
-    if (io && priestSocketId) {
+    if (io && socketIds) {
       await booking.populate('devoteeId', 'name profilePicture createdAt');
-      io.to(priestSocketId).emit('new_booking_request', booking.toObject());
+      const bookingData = booking.toObject();
+      if (socketIds instanceof Set || Array.isArray(socketIds) || typeof socketIds.forEach === 'function') {
+        socketIds.forEach((socketId) => {
+          io.to(socketId).emit('new_booking_request', bookingData);
+        });
+      } else if (typeof socketIds === 'string') {
+        io.to(socketIds).emit('new_booking_request', bookingData);
+      }
     }
 
     res.status(201).json({

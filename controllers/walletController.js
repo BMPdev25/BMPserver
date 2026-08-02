@@ -1,7 +1,6 @@
 // controllers/walletController.js
 const Transaction = require('../models/transaction');
 const Wallet = require('../models/wallet');
-const PriestProfile = require('../models/priestProfile');
 const { initiateBankTransfer } = require('../config/razorpay');
 const { getOrCreateWallet } = require('../services/commissionEngine');
 
@@ -53,26 +52,31 @@ exports.requestWithdrawal = async (req, res) => {
       return res.status(400).json({ message: 'Invalid withdrawal amount' });
     }
 
-    // Get wallet
-    const wallet = await getOrCreateWallet(priestId);
-
-    // Check wallet status
-    if (wallet.status === 'frozen') {
-      return res
-        .status(403)
-        .json({ message: 'Your wallet is currently frozen. Please contact support.' });
-    }
-
-    // Atomically deduct — prevents double-withdrawal race condition
-    const updated = await Wallet.findOneAndUpdate(
-      { priestId, currentBalance: { $gte: amount } },
-      { $inc: { currentBalance: -amount, totalDebited: amount }, $set: { lastPayoutDate: new Date() } },
+    // Deduct from wallet atomically. We check currentBalance >= amount and status !== 'frozen' in the query.
+    const wallet = await Wallet.findOneAndUpdate(
+      {
+        priestId,
+        currentBalance: { $gte: amount },
+        status: { $ne: 'frozen' },
+      },
+      {
+        $inc: { currentBalance: -amount, totalDebited: amount },
+        $set: { lastPayoutDate: new Date() },
+      },
       { new: true }
     );
-    if (!updated) {
+
+    // If no wallet is updated, it means insufficient balance or frozen wallet or wallet does not exist
+    if (!wallet) {
+      const checkWallet = await getOrCreateWallet(priestId);
+      if (checkWallet.status === 'frozen') {
+        return res
+          .status(403)
+          .json({ message: 'Your wallet is currently frozen. Please contact support.' });
+      }
       return res.status(400).json({
-        success: false,
-        message: 'Insufficient balance',
+        message: 'Insufficient balance for withdrawal',
+        currentBalance: checkWallet.currentBalance,
       });
     }
 
@@ -99,15 +103,15 @@ exports.requestWithdrawal = async (req, res) => {
       transaction.status = payoutResult.success ? 'completed' : 'failed';
       await transaction.save();
 
-      if (payoutResult.success) {
-        await PriestProfile.findOneAndUpdate(
-          { userId: priestId },
-          { $inc: { 'earnings.pendingPayments': -amount } }
+      // If payout failed, refund the wallet
+      if (!payoutResult.success) {
+        const refundedWallet = await Wallet.findOneAndUpdate(
+          { priestId },
+          { $inc: { currentBalance: amount, totalDebited: -amount } },
+          { new: true }
         );
-      } else {
-        await Wallet.findByIdAndUpdate(updated._id, {
-          $inc: { currentBalance: amount, totalDebited: -amount },
-        });
+        wallet.currentBalance = refundedWallet.currentBalance;
+        wallet.totalDebited = refundedWallet.totalDebited;
       }
 
       res.status(200).json({
@@ -119,10 +123,12 @@ exports.requestWithdrawal = async (req, res) => {
         newBalance: payoutResult.success ? updated.currentBalance : updated.currentBalance + amount,
       });
     } catch (payoutError) {
-      // Payout gateway failed — restore wallet balance atomically
-      await Wallet.findByIdAndUpdate(updated._id, {
-        $inc: { currentBalance: amount, totalDebited: -amount },
-      });
+      // Payout gateway failed — refund wallet
+      const refundedWallet = await Wallet.findOneAndUpdate(
+        { priestId },
+        { $inc: { currentBalance: amount, totalDebited: -amount } },
+        { new: true }
+      );
 
       transaction.status = 'failed';
       await transaction.save();
@@ -131,6 +137,7 @@ exports.requestWithdrawal = async (req, res) => {
       res.status(500).json({
         message: 'Payout failed. Amount has been refunded to your wallet.',
         transactionId: transaction._id,
+        newBalance: refundedWallet.currentBalance,
       });
     }
   } catch (error) {
