@@ -43,7 +43,7 @@ exports.firebaseSync = async (req, res) => {
     // Fallback: link existing account to Firebase UID if phone/email matches.
     // Only allowed when the account has no Firebase UID yet — prevents account takeover.
     // Use the phone from either firebase or the request body
-    const searchPhone = phone_number || phone;
+    const searchPhone = phone_number || bodyPhone;
     
     if (!user && (searchPhone || email)) {
       const orClauses = [];
