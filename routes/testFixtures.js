@@ -3,7 +3,11 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const Booking = require('../models/booking');
+<<<<<<< Updated upstream
 const Review = require('../models/review');
+=======
+const Rating = require('../models/rating');
+>>>>>>> Stashed changes
 
 // Security middleware to ensure these routes NEVER run in production 
 // and require a secret key in non-production environments.
