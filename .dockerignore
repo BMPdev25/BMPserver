@@ -64,3 +64,9 @@ docker-compose*.yml
 seeds/
 scripts/
 error_log.json
+data/
+app.json
+.claude/
+tests/
+architecture/
+README.md

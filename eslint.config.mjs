@@ -3,6 +3,7 @@ import prettier from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
 
 export default [
+  { ignores: ['node_modules/**', 'public/**'] },
   js.configs.recommended,
   prettier,
   {

@@ -1,26 +1,47 @@
 // services/priestService.js
 const PriestProfile = require('../models/priestProfile');
-const User = require('../models/user');
 const Booking = require('../models/booking');
 const Transaction = require('../models/transaction');
 const Notification = require('../models/notification');
-const Review = require('../models/review');
 const { getOrCreateWallet } = require('../services/commissionEngine');
+const { uploadPublicFile, uploadPrivateFile, deletePrivateFile } = require('./storageService');
+const { priestProfilePicKey, priestDocumentKey } = require('../utils/s3Keys');
+
+// Only these fields may be set through the priest's own profile-edit path.
+// NEVER allow via this path: isVerified, verificationStatus, ratings, earnings,
+// onboardingCompleted, userId — those are controlled server-side / by admins.
+// Without this whitelist a priest could self-approve (isVerified: true) or
+// inflate their own ratings/earnings by mass-assigning raw request body fields.
+const PRIEST_PROFILE_EDITABLE_FIELDS = [
+  'description',
+  'experience',
+  'religiousTraditions',
+  'languagesSpoken',
+  'services',
+  'availability',
+  'location',
+  'templesAffiliated',
+  'profilePicture',
+];
 
 const updateProfile = async (userId, updateData) => {
+  const safeUpdate = {};
+  for (const key of PRIEST_PROFILE_EDITABLE_FIELDS) {
+    if (updateData[key] !== undefined) safeUpdate[key] = updateData[key];
+  }
+
   let profile = await PriestProfile.findOne({ userId });
 
   if (profile) {
-    profile = await PriestProfile.findOneAndUpdate({ userId }, updateData, {
+    profile = await PriestProfile.findOneAndUpdate({ userId }, safeUpdate, {
       new: true,
     });
   } else {
     profile = new PriestProfile({
       userId,
-      ...updateData,
+      ...safeUpdate,
     });
     await profile.save();
-    await User.findByIdAndUpdate(userId, { profileCompleted: true });
   }
 
   return profile;
@@ -28,14 +49,12 @@ const updateProfile = async (userId, updateData) => {
 
 const getProfile = async (userId) => {
   let profile = await PriestProfile.findOne({ userId })
-    .populate({
-      path: 'userId',
-      populate: { path: 'languagesSpoken' },
-    })
-    .populate('services.ceremonyId', 'name duration images description requirements');
+    .populate('userId')
+    .populate('services.ceremonyId', 'name duration images description requirements')
+    .lean();
 
   if (!profile) {
-    profile = new PriestProfile({
+    const newProfile = new PriestProfile({
       userId,
       experience: 0,
       services: [],
@@ -43,13 +62,11 @@ const getProfile = async (userId) => {
       verificationDocuments: [],
       templesAffiliated: [],
     });
-    await profile.save();
+    await newProfile.save();
     profile = await PriestProfile.findOne({ userId })
-      .populate({
-        path: 'userId',
-        populate: { path: 'languagesSpoken' },
-      })
-      .populate('services.ceremonyId', 'name duration images description requirements');
+      .populate('userId')
+      .populate('services.ceremonyId', 'name duration images description requirements')
+      .lean();
   }
 
   return profile;
@@ -90,8 +107,10 @@ const getBookings = async (userId, { status }) => {
   }
 
   let bookings = await Booking.find(query)
-    .populate('devoteeId', 'name email phone')
-    .sort({ date: 1 });
+    .select('ceremonyType date startTime endTime basePrice location devoteeId createdAt status')
+    .populate('devoteeId', 'name profilePicture createdAt')
+    .sort({ date: 1 })
+    .lean();
 
   if (status === 'upcoming') {
     bookings = bookings.filter(
@@ -117,7 +136,9 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: currentMonth },
-  });
+  })
+    .select('amount')
+    .lean();
   const thisMonthEarnings = thisMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const lastMonthTxns = await Transaction.find({
@@ -125,7 +146,9 @@ const getEarnings = async (userId) => {
     type: 'credit_for_booking',
     status: 'completed',
     createdAt: { $gte: lastMonth, $lte: lastMonthEnd },
-  });
+  })
+    .select('amount')
+    .lean();
   const lastMonthEarnings = lastMonthTxns.reduce((sum, tx) => sum + tx.amount, 0);
 
   const growthPercentage =
@@ -142,9 +165,18 @@ const getEarnings = async (userId) => {
   });
 
   const transactions = await Transaction.find({ priestId: userId })
+    .select('amount type direction status description bookingId createdAt')
     .sort({ createdAt: -1 })
     .limit(10)
-    .populate('bookingId', 'ceremonyType date devoteeId');
+    .populate({
+      path: 'bookingId',
+      select: 'ceremonyType date devoteeId',
+      populate: {
+        path: 'devoteeId',
+        select: 'name profilePicture',
+      },
+    })
+    .lean();
 
   return {
     thisMonth: thisMonthEarnings,
@@ -169,11 +201,57 @@ const getEarnings = async (userId) => {
   };
 };
 
+// Paginated transaction history. Distinct from getEarnings (which returns a
+// fixed 10-item preview alongside the wallet summary) — this powers the
+// "load more" transactions list and returns pagination metadata.
+const getTransactions = async (userId, { page = 1, limit = 20 } = {}) => {
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const [transactions, total] = await Promise.all([
+    Transaction.find({ priestId: userId })
+      .select('amount type direction status description bookingId createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate({
+        path: 'bookingId',
+        select: 'ceremonyType date devoteeId',
+        populate: {
+          path: 'devoteeId',
+          select: 'name profilePicture',
+        },
+      })
+      .lean(),
+    Transaction.countDocuments({ priestId: userId }),
+  ]);
+
+  return {
+    data: transactions.map((tx) => ({
+      id: tx._id,
+      amount: tx.amount,
+      type: tx.type,
+      direction: tx.direction,
+      date: tx.createdAt,
+      description: tx.description,
+      status: tx.status,
+      booking: tx.bookingId,
+    })),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      hasMore: skip + transactions.length < total,
+    },
+  };
+};
+
 const getNotifications = async (userId, { limit = 50, unreadOnly = false }) => {
   const query = { userId, targetRole: 'priest' };
   if (unreadOnly === 'true') query.read = false;
 
-  return await Notification.find(query).sort({ createdAt: -1 }).limit(parseInt(limit));
+  return await Notification.find(query).sort({ createdAt: -1 }).limit(parseInt(limit)).lean();
 };
 
 const markNotificationAsRead = async (userId, notificationId) => {
@@ -193,31 +271,107 @@ const markNotificationAsRead = async (userId, notificationId) => {
 };
 
 const uploadDocument = async (userId, file, documentType) => {
-  const profile = await PriestProfile.findOne({ userId });
+  let profile = await PriestProfile.findOne({ userId });
   if (!profile) {
-    const error = new Error('Profile not found');
-    error.statusCode = 404;
-    throw error;
+    profile = new PriestProfile({
+      userId,
+      experience: 0,
+      services: [],
+      location: { type: 'Point', coordinates: [0, 0] },
+      verificationDocuments: [],
+      templesAffiliated: [],
+    });
   }
 
   if (documentType === 'profile_picture') {
-    const b64 = file.buffer.toString('base64');
-    profile.profilePicture = `data:${file.mimetype};base64,${b64}`;
+    // Public bucket — URL served directly, no presigning needed
+    const key = priestProfilePicKey(userId.toString());
+    const url = await uploadPublicFile(file.buffer, key, file.mimetype);
+    profile.profilePicture = url;
   } else {
+    // Private bucket — store S3 key, presign at read time
+    const key = priestDocumentKey(userId.toString(), documentType, file.mimetype);
+
+    // Delete previous version from S3 if one exists
+    const existing = profile.verificationDocuments.find((d) => d.type === documentType);
+    if (existing?.url) await deletePrivateFile(existing.url).catch(() => {});
+
+    const s3Key = await uploadPrivateFile(file.buffer, key, file.mimetype);
+
     const newDoc = {
       type: documentType,
-      data: file.buffer,
-      contentType: file.mimetype,
+      url: s3Key,
       fileName: file.originalname,
       status: 'pending',
+      uploadDate: new Date(),
     };
+
     const idx = profile.verificationDocuments.findIndex((d) => d.type === documentType);
     if (idx !== -1) profile.verificationDocuments[idx] = newDoc;
     else profile.verificationDocuments.push(newDoc);
   }
 
   await profile.save();
-  return { message: 'Document uploaded successfully' };
+  return { success: true, message: 'Document uploaded successfully' };
+};
+
+const getProfileCompletion = async (userId) => {
+  const profile = await getProfile(userId);
+  const user = profile.userId;
+
+  const fields = [
+    // email is optional (phone/OTP signups have no email), so accept either contact method
+    { name: 'basicInfo', check: () => user && user.name && (user.email || user.phone) },
+    {
+      name: 'languages',
+      check: () => user && user.languagesSpoken && user.languagesSpoken.length > 0,
+    },
+    { name: 'description', check: () => profile.description && profile.description.length > 0 },
+    {
+      name: 'experience',
+      check: () => profile.experience !== undefined && profile.experience !== null,
+    },
+    {
+      name: 'profilePicture',
+      check: () => profile.profilePicture && profile.profilePicture.length > 0,
+    },
+    { name: 'services', check: () => profile.services && profile.services.length > 0 },
+    {
+      name: 'location',
+      check: () =>
+        profile.location &&
+        profile.location.coordinates &&
+        (profile.location.coordinates[0] !== 0 || profile.location.coordinates[1] !== 0),
+    },
+    {
+      name: 'documents',
+      check: () => profile.verificationDocuments && profile.verificationDocuments.length > 0,
+    },
+  ];
+
+  const completedFields = [];
+  const missingFields = [];
+
+  fields.forEach((field) => {
+    if (field.check()) {
+      completedFields.push(field.name);
+    } else {
+      missingFields.push(field.name);
+    }
+  });
+
+  const totalFields = fields.length;
+  const completedCount = completedFields.length;
+  const completionPercentage = Math.round((completedCount / totalFields) * 100);
+
+  return {
+    completionPercentage,
+    completedFields,
+    missingFields,
+    isVerified: profile.isVerified || false,
+    canAcceptRequests:
+      (profile.isVerified || false) && profile.services && profile.services.length > 0,
+  };
 };
 
 module.exports = {
@@ -226,7 +380,9 @@ module.exports = {
   toggleStatus,
   getBookings,
   getEarnings,
+  getTransactions,
   getNotifications,
   markNotificationAsRead,
   uploadDocument,
+  getProfileCompletion,
 };

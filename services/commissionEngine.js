@@ -1,10 +1,5 @@
 // services/commissionEngine.js
-// Core business logic: processes booking completion and handles wallet credits.
-
-const Booking = require('../models/booking');
 const Wallet = require('../models/wallet');
-const Transaction = require('../models/transaction');
-const CompanyRevenue = require('../models/companyRevenue');
 
 // Platform commission rate (5%)
 const COMMISSION_RATE = 0.05;
@@ -21,9 +16,12 @@ const COMMISSION_RATE = 0.05;
  * @param {string} bookingId - The booking to process
  * @returns {Object} { wallet, transaction, revenue }
  */
-async function processBookingCompletion(bookingId) {
+async function processBookingCompletion(bookingId, options = {}) {
+  const { session } = options;
+  const PriestProfile = require('../models/priestProfile');
+
   // 1. Fetch booking
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).session(session);
   if (!booking) {
     throw new Error(`Booking not found: ${bookingId}`);
   }
@@ -38,7 +36,7 @@ async function processBookingCompletion(bookingId) {
     bookingId: bookingId,
     type: 'credit_for_booking',
     status: 'completed',
-  });
+  }).session(session);
   if (existingTx) {
     throw new Error(`Booking ${bookingId} has already been processed for payment`);
   }
@@ -53,14 +51,14 @@ async function processBookingCompletion(bookingId) {
   const totalAmount = booking.totalAmount || priestShare + commission;
 
   // 3. Find or create Wallet
-  let wallet = await Wallet.findOne({ priestId: booking.priestId });
+  let wallet = await Wallet.findOne({ priestId: booking.priestId }).session(session);
   if (!wallet) {
-    wallet = await Wallet.create({
+    wallet = (await Wallet.create([{
       priestId: booking.priestId,
       currentBalance: 0,
       totalCredited: 0,
       totalDebited: 0,
-    });
+    }], { session }))[0];
   }
 
   // Check wallet status
@@ -71,10 +69,10 @@ async function processBookingCompletion(bookingId) {
   // 4. Credit priest share to wallet
   wallet.currentBalance += priestShare;
   wallet.totalCredited += priestShare;
-  await wallet.save();
+  await wallet.save({ session });
 
   // 5. Create Transaction record
-  const transaction = await Transaction.create({
+  const transaction = (await Transaction.create([{
     priestId: booking.priestId,
     walletId: wallet._id,
     bookingId: booking._id,
@@ -83,21 +81,35 @@ async function processBookingCompletion(bookingId) {
     amount: priestShare,
     status: 'completed',
     description: `${booking.ceremonyType} ceremony`,
-  });
+  }], { session }))[0];
 
   // 6. Log company revenue
-  const revenue = await CompanyRevenue.create({
+  const revenue = (await CompanyRevenue.create([{
     bookingId: booking._id,
     priestId: booking.priestId,
     totalAmount: totalAmount,
     commissionAmount: commission,
     commissionRate: COMMISSION_RATE,
     priestShare: priestShare,
-  });
+  }], { session }))[0];
 
   // 7. Update booking paymentStatus
   booking.paymentStatus = 'completed';
-  await booking.save();
+  await booking.save({ session });
+
+  // 8. Update PriestProfile ceremonyCount & earnings
+  await PriestProfile.findOneAndUpdate(
+    { userId: booking.priestId },
+    {
+      $inc: {
+        ceremonyCount: 1,
+        'earnings.totalEarnings': priestShare,
+        'earnings.thisMonth': priestShare,
+        'earnings.pendingPayments': priestShare,
+      },
+    },
+    { session }
+  );
 
   return { wallet, transaction, revenue };
 }
@@ -123,7 +135,6 @@ async function getOrCreateWallet(priestId) {
 }
 
 module.exports = {
-  processBookingCompletion,
   getOrCreateWallet,
   COMMISSION_RATE,
 };

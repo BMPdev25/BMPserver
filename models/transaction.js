@@ -58,4 +58,13 @@ transactionSchema.index({ walletId: 1 });
 transactionSchema.index({ bookingId: 1 });
 transactionSchema.index({ type: 1, status: 1 });
 
+// Unique index — prevents double-crediting the same booking (atomic idempotency gate)
+transactionSchema.index(
+  { bookingId: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { type: 'credit_for_booking' },
+  }
+);
+
 module.exports = mongoose.model('Transaction', transactionSchema);

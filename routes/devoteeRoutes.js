@@ -1,9 +1,9 @@
 // routes/devoteeRoutes.js
 const express = require('express');
 const devoteeController = require('../controllers/devoteeController');
-const bookingController = require('../controllers/bookingController');
-const reviewController = require('../controllers/reviewController');
 const { protect, devoteeOnly } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { addAddressRules } = require('../validators/profileValidators');
 
 const router = express.Router();
 
@@ -11,7 +11,6 @@ const router = express.Router();
 router.get('/priests/all', devoteeController.getAllPriests);
 router.get('/priests', devoteeController.searchPriests);
 router.get('/priests/:priestId', devoteeController.getPriestDetails);
-router.get('/priests/:priestId/reviews', reviewController.getUserReviews);
 
 // Protected routes (need authentication and devotee role)
 router.get('/pending-actions', protect, devoteeOnly, devoteeController.getPendingActions);
@@ -21,6 +20,12 @@ router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
 
 // Notification routes
 router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifications);
+router.get(
+  '/notifications/unread-count',
+  protect,
+  devoteeOnly,
+  devoteeController.getUnreadNotificationCount
+);
 router.put(
   '/notifications/:notificationId/read',
   protect,
@@ -36,8 +41,14 @@ router.put(
 
 // Address Management
 router.get('/addresses', protect, devoteeController.getAddresses);
-router.post('/addresses', protect, devoteeController.addAddress);
-router.put('/addresses/:addressId', protect, devoteeController.updateAddress);
+router.post('/addresses', protect, addAddressRules, validate, devoteeController.addAddress);
+router.put(
+  '/addresses/:addressId',
+  protect,
+  addAddressRules,
+  validate,
+  devoteeController.updateAddress
+);
 router.delete('/addresses/:addressId', protect, devoteeController.deleteAddress);
 
 module.exports = router;

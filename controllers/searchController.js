@@ -1,7 +1,7 @@
-// controllers/searchController.js
+﻿// controllers/searchController.js
 const User = require('../models/user');
-const PriestProfile = require('../models/priestProfile');
 const Ceremony = require('../models/ceremony');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 // Universal search function
 const universalSearch = async (req, res) => {
@@ -46,9 +46,9 @@ const universalSearch = async (req, res) => {
           { isActive: true },
           {
             $or: [
-              { name: { $regex: query, $options: 'i' } },
-              { email: { $regex: query, $options: 'i' } },
-              { 'profilePicture.alt': { $regex: query, $options: 'i' } },
+              { name: { $regex: escapeRegex(query), $options: 'i' } },
+              { email: { $regex: escapeRegex(query), $options: 'i' } },
+              { 'profilePicture.alt': { $regex: escapeRegex(query), $options: 'i' } },
             ],
           },
         ],
@@ -58,8 +58,8 @@ const universalSearch = async (req, res) => {
       if (location) {
         priestSearchQuery['$and'].push({
           $or: [
-            { 'address.city': { $regex: location, $options: 'i' } },
-            { 'address.state': { $regex: location, $options: 'i' } },
+            { 'address.city': { $regex: escapeRegex(location), $options: 'i' } },
+            { 'address.state': { $regex: escapeRegex(location), $options: 'i' } },
           ],
         });
       }
@@ -70,9 +70,9 @@ const universalSearch = async (req, res) => {
           path: 'priestProfile',
           model: 'PriestProfile',
           select:
-            'experience religiousTradition description ratings priceList currentAvailability serviceAreas',
+            'experience religiousTradition description ratings services currentAvailability serviceAreas',
           match: religiousTradition
-            ? { religiousTradition: { $regex: religiousTradition, $options: 'i' } }
+            ? { religiousTradition: { $regex: escapeRegex(religiousTradition), $options: 'i' } }
             : {},
         })
         .skip(type === 'all' ? 0 : skip)
@@ -82,12 +82,25 @@ const universalSearch = async (req, res) => {
       // Filter priests by price range if provided
       let filteredPriests = priests.filter((priest) => priest.priestProfile);
 
+      // Prices come from the active services[].price field (the legacy priceList
+      // Map is empty, which made every price read ₹0). The schema has no per-service
+      // "active" flag, so an active service is simply one with a numeric price.
+      const servicePrices = (profile) =>
+        (profile.services || [])
+          .map((s) => s?.price)
+          .filter((p) => typeof p === 'number');
+      // "From" price for a priest = cheapest service they offer.
+      const startingPriceOf = (profile) => {
+        const prices = servicePrices(profile);
+        return prices.length ? Math.min(...prices) : null;
+      };
+
       if (priceRange) {
         const [minPrice, maxPrice] = priceRange.split('-').map(Number);
         filteredPriests = filteredPriests.filter((priest) => {
-          const prices = Array.from(priest.priestProfile.priceList.values());
-          const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-          return avgPrice >= minPrice && avgPrice <= maxPrice;
+          const startingPrice = startingPriceOf(priest.priestProfile);
+          if (startingPrice === null) return false;
+          return startingPrice >= minPrice && startingPrice <= maxPrice;
         });
       }
 
@@ -100,8 +113,8 @@ const universalSearch = async (req, res) => {
           break;
         case 'price':
           filteredPriests.sort((a, b) => {
-            const aPrice = Math.min(...Array.from(a.priestProfile.priceList.values()));
-            const bPrice = Math.min(...Array.from(b.priestProfile.priceList.values()));
+            const aPrice = startingPriceOf(a.priestProfile) ?? Infinity;
+            const bPrice = startingPriceOf(b.priestProfile) ?? Infinity;
             return aPrice - bPrice;
           });
           break;
@@ -113,24 +126,28 @@ const universalSearch = async (req, res) => {
           break;
       }
 
-      searchResults.priests = filteredPriests.map((priest) => ({
-        id: priest._id,
-        name: priest.name,
-        profilePicture: priest.profilePicture,
-        experience: priest.priestProfile.experience,
-        religiousTradition: priest.priestProfile.religiousTradition,
-        rating: priest.priestProfile.ratings,
-        rating: priest.priestProfile.ratings,
-        // ceremonies: priest.priestProfile.ceremonies, // removed
-        description: priest.priestProfile.description,
-        priceRange: {
-          min: Math.min(...Array.from(priest.priestProfile.priceList.values())),
-          max: Math.max(...Array.from(priest.priestProfile.priceList.values())),
-        },
-        availability: priest.priestProfile.currentAvailability,
-        serviceAreas: priest.priestProfile.serviceAreas,
-        type: 'priest',
-      }));
+      searchResults.priests = filteredPriests.map((priest) => {
+        const prices = servicePrices(priest.priestProfile);
+        return {
+          _id: priest.priestProfile._id,
+          userId: priest._id,
+          name: priest.name,
+          profilePicture: priest.profilePicture,
+          experience: priest.priestProfile.experience,
+          religiousTradition: priest.priestProfile.religiousTradition,
+          rating: priest.priestProfile.ratings,
+          // ceremonies: priest.priestProfile.ceremonies, // removed
+          description: priest.priestProfile.description,
+          startingPrice: prices.length ? Math.min(...prices) : 0,
+          priceRange: {
+            min: prices.length ? Math.min(...prices) : 0,
+            max: prices.length ? Math.max(...prices) : 0,
+          },
+          availability: priest.priestProfile.currentAvailability,
+          serviceAreas: priest.priestProfile.serviceAreas,
+          type: 'priest',
+        };
+      });
     }
 
     // Search ceremonies if type is 'ceremonies' or 'all'
@@ -152,7 +169,7 @@ const universalSearch = async (req, res) => {
       // Add religious tradition filter if provided
       if (religiousTradition) {
         ceremonySearchQuery['$and'].push({
-          religiousTraditions: { $in: [new RegExp(religiousTradition, 'i')] },
+          religiousTraditions: { $in: [new RegExp(escapeRegex(religiousTradition), 'i')] },
         });
       }
 
@@ -264,7 +281,7 @@ const getPopularCeremonies = async (req, res) => {
     }
 
     if (religiousTradition) {
-      query.religiousTraditions = { $in: [new RegExp(religiousTradition, 'i')] };
+      query.religiousTraditions = { $in: [new RegExp(escapeRegex(religiousTradition), 'i')] };
     }
 
     const ceremonies = await Ceremony.find(query)
@@ -280,8 +297,8 @@ const getPopularCeremonies = async (req, res) => {
       subcategory: ceremony.subcategory,
       priceDisplay:
         ceremony.pricing.priceRange.min === ceremony.pricing.priceRange.max
-          ? `₹${ceremony.pricing.priceRange.min}`
-          : `₹${ceremony.pricing.priceRange.min} - ₹${ceremony.pricing.priceRange.max}`,
+          ? `â‚¹${ceremony.pricing.priceRange.min}`
+          : `â‚¹${ceremony.pricing.priceRange.min} - â‚¹${ceremony.pricing.priceRange.max}`,
       durationDisplay: (() => {
         const hours = Math.floor(ceremony.duration.typical / 60);
         const minutes = ceremony.duration.typical % 60;
@@ -340,8 +357,8 @@ const getCeremonyDetails = async (req, res) => {
       ...ceremony,
       priceDisplay:
         ceremony.pricing.priceRange.min === ceremony.pricing.priceRange.max
-          ? `₹${ceremony.pricing.priceRange.min}`
-          : `₹${ceremony.pricing.priceRange.min} - ₹${ceremony.pricing.priceRange.max}`,
+          ? `â‚¹${ceremony.pricing.priceRange.min}`
+          : `â‚¹${ceremony.pricing.priceRange.min} - â‚¹${ceremony.pricing.priceRange.max}`,
       durationDisplay: (() => {
         const hours = Math.floor(ceremony.duration.typical / 60);
         const minutes = ceremony.duration.typical % 60;
@@ -441,7 +458,7 @@ const getSearchSuggestions = async (req, res) => {
       const priestSuggestions = await User.find({
         userType: 'priest',
         isActive: true,
-        name: { $regex: query, $options: 'i' },
+        name: { $regex: escapeRegex(query), $options: 'i' },
       })
         .select('name profilePicture')
         .limit(5)
@@ -460,9 +477,9 @@ const getSearchSuggestions = async (req, res) => {
       const ceremonySuggestions = await Ceremony.find({
         isActive: true,
         $or: [
-          { name: { $regex: query, $options: 'i' } },
-          { tags: { $regex: query, $options: 'i' } },
-          { keywords: { $regex: query, $options: 'i' } },
+          { name: { $regex: escapeRegex(query), $options: 'i' } },
+          { tags: { $regex: escapeRegex(query), $options: 'i' } },
+          { keywords: { $regex: escapeRegex(query), $options: 'i' } },
         ],
       })
         .select('name category primaryImage')
@@ -500,10 +517,84 @@ const getSearchSuggestions = async (req, res) => {
   }
 };
 
+
+// ---------------------------------------------------------------------------
+// Unified search  GET /api/search?q=<query>&limit=<n>
+// Returns up to <limit> matching ceremonies + priests (name or service match).
+// ---------------------------------------------------------------------------
+const PriestProfile = require('../models/priestProfile');
+
+const unifiedSearch = async (req, res) => {
+  try {
+    const { q = '', limit = '5' } = req.query;
+    const trimmed = q.trim();
+
+    if (trimmed.length < 2) {
+      return res.json({ success: true, data: { ceremonies: [], priests: [] } });
+    }
+
+    const maxResults = Math.min(parseInt(limit, 10) || 5, 10);
+    const regex = new RegExp(escapeRegex(trimmed), 'i');
+
+    // Parallel: find ceremony IDs matching name, and user IDs matching priest name
+    const [matchingCeremonyDocs, matchingUserDocs] = await Promise.all([
+      Ceremony.find({ name: regex }).select('_id').lean(),
+      User.find({ name: regex, userType: 'priest', isActive: true }).select('_id').lean(),
+    ]);
+
+    const matchingCeremonyIds = matchingCeremonyDocs.map((c) => c._id);
+    const matchingUserIds = matchingUserDocs.map((u) => u._id);
+
+    // Parallel: fetch ceremony details + priests who match name or offer a matching ceremony
+    const [ceremonies, priests] = await Promise.all([
+      Ceremony.find({ name: regex, isActive: true })
+        .select('_id name category description pricing')
+        .limit(maxResults)
+        .lean(),
+      PriestProfile.find({
+        verificationStatus: 'approved',
+        $or: [
+          { userId: { $in: matchingUserIds } },
+          { 'services.ceremonyId': { $in: matchingCeremonyIds } },
+        ],
+      })
+        .populate('userId', 'name profilePicture')
+        .select('_id userId ratings services')
+        .limit(maxResults)
+        .lean(),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        ceremonies: ceremonies.map((c) => ({
+          _id: c._id,
+          name: c.name,
+          category: c.category,
+          shortDescription: c.description
+            ? c.description.slice(0, 80) + (c.description.length > 80 ? '…' : '')
+            : null,
+          pricing: c.pricing,
+        })),
+        priests: priests.map((p) => ({
+          _id: p._id,
+          userId: p.userId,
+          ratings: p.ratings,
+          services: p.services,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Unified search error:', error);
+    res.status(500).json({ success: false, error: 'Search failed' });
+  }
+};
 module.exports = {
+  unifiedSearch,
   universalSearch,
   getPopularCeremonies,
   getCeremonyDetails,
   getCeremonyCategories,
   getSearchSuggestions,
 };
+

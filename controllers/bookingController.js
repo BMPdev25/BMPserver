@@ -48,29 +48,47 @@ exports.createBooking = async (req, res, next) => {
     const devoteeId = req.user.id;
     const booking = await bookingService.createBooking(devoteeId, req.body);
 
+    // Snapshot before any further population so the HTTP response is stable
+    // regardless of whether the priest has an active socket connection.
+    const responseData = booking.toObject();
+
+    const io = req.app.get('io');
+    const userSockets = req.app.get('userSockets');
+    const socketIds = userSockets.get(
+      booking.priestId._id?.toString() ?? booking.priestId.toString()
+    );
+    if (io && socketIds) {
+      await booking.populate('devoteeId', 'name profilePicture createdAt');
+      const bookingData = booking.toObject();
+      if (socketIds instanceof Set || Array.isArray(socketIds) || typeof socketIds.forEach === 'function') {
+        socketIds.forEach((socketId) => {
+          io.to(socketId).emit('new_booking_request', bookingData);
+        });
+      } else if (typeof socketIds === 'string') {
+        io.to(socketIds).emit('new_booking_request', bookingData);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Booking created successfully',
-      data: booking,
+      data: responseData,
     });
   } catch (error) {
     next(error);
   }
 };
 
-// Update booking status
-exports.updateBookingStatus = async (req, res, next) => {
+// Create an instant booking (broadcast to priests; no priest chosen up front)
+exports.createInstantBooking = async (req, res, next) => {
   try {
-    const { bookingId } = req.params;
-    const { status, reason } = req.body;
-    const userId = req.user.id;
+    const devoteeId = req.user.id;
+    const booking = await bookingService.createInstantBooking(devoteeId, req.body);
 
-    const booking = await bookingService.updateBookingStatus(bookingId, userId, { status, reason });
-
-    res.status(200).json({
+    res.status(201).json({
       success: true,
-      message: `Booking ${status} successfully`,
-      booking: booking,
+      message: 'Searching for an available priest',
+      data: booking.toObject(),
     });
   } catch (error) {
     next(error);
@@ -99,13 +117,15 @@ exports.cancelBookingByDevotee = async (req, res, next) => {
 // Create payment order
 exports.createPaymentOrder = async (req, res, next) => {
   try {
-    const { bookingId, amount } = req.body;
+    const { bookingId } = req.body;
     const userId = req.user.id;
 
-    if (!bookingId || !amount) {
+    // The amount is always derived server-side from booking.totalAmount — a
+    // client-supplied amount is never trusted, so only bookingId is required.
+    if (!bookingId) {
       return res.status(400).json({
         success: false,
-        message: 'Booking ID and amount are required'
+        message: 'Booking ID is required',
       });
     }
 
@@ -124,12 +144,13 @@ exports.createPaymentOrder = async (req, res, next) => {
 exports.verifyPayment = async (req, res, next) => {
   try {
     const { bookingId, rzpPaymentId, rzpOrderId, rzpSignature } = req.body;
+    const userId = req.user.id;
 
     const booking = await bookingService.verifyPayment(bookingId, {
       rzpPaymentId,
       rzpOrderId,
       rzpSignature,
-    });
+    }, userId);
 
     res.status(200).json({
       success: true,

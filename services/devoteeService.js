@@ -1,71 +1,17 @@
 // services/devoteeService.js
 const User = require('../models/user');
 const PriestProfile = require('../models/priestProfile');
-const Booking = require('../models/booking');
-const Notification = require('../models/notification');
-const Review = require('../models/review');
-const Ceremony = require('../models/ceremony');
 const mongoose = require('mongoose');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 const getAllPriests = async () => {
   return await PriestProfile.find({})
     .populate({
       path: 'userId',
       select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
     })
     .lean()
     .exec();
-};
-
-const searchPriests = async (query) => {
-  const { ceremony, city, religion, minRating, search, page = 1, limit = 10 } = query;
-  const filter = { 'currentAvailability.status': 'available' };
-
-  if (ceremony) {
-    const ceremonyDoc = await Ceremony.findOne({
-      name: new RegExp(ceremony, 'i'),
-      isActive: true,
-    })
-      .select('_id')
-      .lean();
-    if (ceremonyDoc) filter['services.ceremonyId'] = ceremonyDoc._id;
-    else return { priests: [], total: 0 };
-  }
-
-  if (city) {
-    const cityRegex = new RegExp(city, 'i');
-    const cityUsers = await User.find({ 'location.city': cityRegex }).select('_id').lean();
-    filter.userId = { $in: cityUsers.map((u) => u._id) };
-  }
-
-  if (religion) filter.religiousTradition = new RegExp(religion, 'i');
-  if (minRating) filter['ratings.average'] = { $gte: parseFloat(minRating) };
-
-  if (search) {
-    const searchRegex = new RegExp(search, 'i');
-    const matchingUsers = await User.find({ name: searchRegex }).select('_id').lean();
-    filter.$or = [
-      { userId: { $in: matchingUsers.map((u) => u._id) } },
-      { description: searchRegex },
-    ];
-  }
-
-  const priests = await PriestProfile.find(filter)
-    .populate({
-      path: 'userId',
-      select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
-    })
-    .populate('services.ceremonyId', 'name')
-    .sort({ 'ratings.average': -1 })
-    .limit(limit * 1)
-    .skip((page - 1) * limit)
-    .lean()
-    .exec();
-
-  const total = await PriestProfile.countDocuments(filter);
-  return { priests, total };
 };
 
 const getPriestDetails = async (priestId) => {
@@ -76,23 +22,27 @@ const getPriestDetails = async (priestId) => {
   }
 
   let priest = await PriestProfile.findById(priestId)
+    .select(
+      'userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics'
+    )
     .populate({
       path: 'userId',
-      select: 'name email phone location languagesSpoken',
-      populate: { path: 'languagesSpoken', select: 'name' },
+      select: 'name profilePicture languagesSpoken',
     })
-    .populate('services.ceremonyId', 'name ritualSteps')
+    .populate('services.ceremonyId', 'name category duration ritualSteps')
     .lean()
     .exec();
 
   if (!priest) {
     priest = await PriestProfile.findOne({ userId: priestId })
+      .select(
+        'userId services ratings experience description religiousTradition availability location currentAvailability isVerified specializations ceremonyCount profilePicture analytics'
+      )
       .populate({
         path: 'userId',
-        select: 'name email phone location languagesSpoken',
-        populate: { path: 'languagesSpoken', select: 'name' },
+        select: 'name profilePicture languagesSpoken',
       })
-      .populate('services.ceremonyId', 'name ritualSteps')
+      .populate('services.ceremonyId', 'name category duration ritualSteps')
       .lean()
       .exec();
   }
@@ -140,12 +90,13 @@ const manageAddress = async (userId, action, addressData, addressId = null) => {
       else if (user.addresses.length === 0) addressData.isDefault = true;
       user.addresses.push(addressData);
       break;
-    case 'update':
+    case 'update': {
       const idx = user.addresses.findIndex((a) => a._id.toString() === addressId);
       if (idx === -1) throw new Error('Address not found');
       if (addressData.isDefault) user.addresses.forEach((a) => (a.isDefault = false));
       user.addresses[idx] = { ...user.addresses[idx], ...addressData };
       break;
+    }
     case 'delete':
       user.addresses = user.addresses.filter((a) => a._id.toString() !== addressId);
       if (user.addresses.length > 0 && !user.addresses.some((a) => a.isDefault)) {
@@ -160,7 +111,6 @@ const manageAddress = async (userId, action, addressData, addressId = null) => {
 
 module.exports = {
   getAllPriests,
-  searchPriests,
   getPriestDetails,
   updateProfile,
   manageAddress,

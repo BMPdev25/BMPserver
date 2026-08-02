@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const moment = require('moment');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
+const pushService = require('../services/pushService');
 
 // Run every hour to check for upcoming bookings
 const scheduleReminders = () => {
@@ -10,46 +11,42 @@ const scheduleReminders = () => {
     try {
       const now = moment();
 
-      // Look for confirmed bookings
-      const bookings = await Booking.find({ status: 'confirmed' });
+      // Look for confirmed bookings within a 3-day window to optimize query performance
+      const today = moment().startOf('day').toDate();
+      const dayAfterTomorrow = moment().add(2, 'days').endOf('day').toDate();
+      const bookings = await Booking.find({
+        status: 'confirmed',
+        date: { $gte: today, $lte: dayAfterTomorrow },
+      });
 
       for (const booking of bookings) {
-        if (!booking.date || !booking.time) continue;
+        if (!booking.date || !booking.startTime) continue;
 
-        // Create a moment object for the booking start time
-        // Assuming time is in "HH:MM AM/PM" or "HH:MM" format
-        const bookingDateTime = moment(
-          `${moment(booking.date).format('YYYY-MM-DD')} ${booking.startTime}`,
-          ['YYYY-MM-DD HH:mm A', 'YYYY-MM-DD HH:mm']
+        // Create a moment object for the booking start time.
+        // startTime is a wall-clock time in IST — parse with the +05:30 offset so
+        // the comparison against `now` (an absolute instant) is correct regardless
+        // of the server's local timezone. This matches the IST convention used
+        // elsewhere (e.g. instant booking lead-time checks in bookingService.js).
+        const dateStr = moment(booking.date).format('YYYY-MM-DD');
+        const bookingDateTime = moment.parseZone(
+          `${dateStr} ${booking.startTime} +05:30`,
+          ['YYYY-MM-DD hh:mm A Z', 'YYYY-MM-DD HH:mm Z']
         );
 
         if (!bookingDateTime.isValid()) continue;
 
-        const hoursUntilBooking = bookingDateTime.diff(now, 'hours');
+        // Float diff + a ±0.5h tolerance window so a slightly-delayed cron tick
+        // never skips the integer-hour boundary. Duplicate fires are already
+        // guarded by sendReminder's 2-hour existence check.
+        const hoursUntilBooking = bookingDateTime.diff(now, 'hours', true);
 
-        // 1. Day Before Reminder (Approx 24 hours before)
-        if (hoursUntilBooking === 24) {
-          // Notify Devotee
-          await sendReminder(
-            booking.devoteeId,
-            booking._id,
-            'Upcoming Puja Tomorrow',
-            `Your booking for ${booking.ceremonyType} is scheduled for tomorrow at ${booking.startTime}.`,
-            'devotee'
-          );
+        // NOTE: the 24h "tomorrow" reminder is owned solely by schedulePushReminders
+        // (the daily 8:30 IST push job). It used to also fire here, which delivered
+        // the devotee and priest two notifications for the same booking. This hourly
+        // job now only handles the 2-hour "starting soon" reminder.
 
-          // Notify Priest
-          await sendReminder(
-            booking.priestId,
-            booking._id,
-            'Upcoming Puja Tomorrow',
-            `You have a ${booking.ceremonyType} scheduled tomorrow at ${booking.startTime}.`,
-            'priest'
-          );
-        }
-
-        // 2. Morning-Of Reminder (Approx 2 hours before)
-        if (hoursUntilBooking === 2) {
+        // Morning-Of Reminder (Approx 2 hours before)
+        if (hoursUntilBooking > 1.5 && hoursUntilBooking <= 2.5) {
           // Notify Devotee
           await sendReminder(
             booking.devoteeId,
@@ -100,4 +97,178 @@ const sendReminder = async (userId, relatedId, title, message, targetRole) => {
   }
 };
 
-module.exports = { scheduleReminders };
+// Every day at 8:00 AM IST
+const schedulePushReminders = () => {
+  cron.schedule('30 8 * * *', async () => {
+    console.log('[Cron] Running ceremony reminder job...');
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateStr = tomorrow.toISOString().split('T')[0];
+
+      const bookings = await Booking.find({
+        date: {
+          $gte: new Date(dateStr + 'T00:00:00.000Z'),
+          $lt: new Date(dateStr + 'T23:59:59.999Z'),
+        },
+        status: 'confirmed',
+      }).populate('devoteeId priestId', 'name');
+
+      // Skip bookings where either party's account was deleted (null populate result)
+      const valid = bookings.filter((b) => b.devoteeId?._id && b.priestId?._id);
+
+      for (const booking of valid) {
+        await pushService.notifyBothCeremonyReminder(
+          booking.devoteeId._id,
+          booking.priestId._id,
+          booking
+        );
+      }
+      console.log(`[Cron] Sent reminders for ${valid.length} ceremonies.`);
+    } catch (err) {
+      console.error('[Cron] Reminder job failed:', err.message);
+    }
+  }, { timezone: 'Asia/Kolkata' });
+};
+
+// Every 15 minutes — cancel bookings whose payment window expired before payment
+// was completed. Covers both 'pending' requests AND 'confirmed' bookings that a
+// priest accepted before payment: without the 'confirmed' case those would sit
+// unpaid forever (they can never be completed, which requires a paid status).
+const runExpiredPaymentCleanup = async () => {
+  const expired = await Booking.find({
+    status: { $in: ['pending', 'confirmed'] },
+    paymentStatus: { $ne: 'completed' },
+    paymentExpiresAt: { $lt: new Date() },
+  });
+  for (const b of expired) {
+    b.status = 'cancelled';
+    b.cancellationReason = 'Payment not completed within time limit';
+    b.cancellationDate = new Date();
+    b.statusHistory.push({
+      status: 'cancelled',
+      timestamp: new Date(),
+      reason: 'Payment not completed within time limit',
+    });
+    await b.save();
+
+    // Let the devotee know their unpaid booking was released, and free the
+    // priest's slot by notifying them too (only relevant once a priest is set).
+    await sendReminder(
+      b.devoteeId,
+      b._id,
+      'Booking Cancelled — Payment Not Completed',
+      `Your ${b.ceremonyType} booking was cancelled because payment was not completed in time.`,
+      'devotee'
+    );
+    if (b.priestId) {
+      await sendReminder(
+        b.priestId,
+        b._id,
+        'Booking Released — Payment Not Completed',
+        `The ${b.ceremonyType} booking was cancelled because the devotee did not complete payment in time.`,
+        'priest'
+      );
+    }
+  }
+  if (expired.length > 0) {
+    console.log(`[Cron] Cancelled ${expired.length} expired unpaid bookings`);
+  }
+  return expired.length;
+};
+
+const scheduleExpiredPaymentCleanup = () => {
+  cron.schedule('*/15 * * * *', async () => {
+    try {
+      await runExpiredPaymentCleanup();
+    } catch (err) {
+      console.error('[Cron] Expired payment cleanup failed:', err.message);
+    }
+  });
+};
+
+// Expire instant bookings that no priest accepted within their 10-minute TTL.
+// Cancels them and nudges the devotee toward scheduling a specific pandit.
+const runInstantExpiryCleanup = async () => {
+  const expired = await Booking.find({
+    bookingType: 'instant',
+    status: 'searching',
+    instantExpiresAt: { $lt: new Date() },
+  });
+
+  for (const b of expired) {
+    // Use an atomic update (not .save()) — a 'searching' booking has no priestId,
+    // and saving it as 'cancelled' would trip the priestId-required validator.
+    await Booking.findByIdAndUpdate(b._id, {
+      $set: {
+        status: 'cancelled',
+        cancellationReason: 'No pandit accepted within 10 minutes',
+        cancellationDate: new Date(),
+      },
+      $push: {
+        statusHistory: {
+          status: 'cancelled',
+          timestamp: new Date(),
+          reason: 'No pandit accepted within 10 minutes',
+        },
+      },
+    });
+
+    await pushService.sendToUser(
+      b.devoteeId,
+      'No Pandit Found',
+      'No pandit accepted your instant request. You can schedule with a specific pandit instead.',
+      { screen: 'BookingsTab', bookingId: b._id.toString(), targetRole: 'devotee' },
+      'booking'
+    );
+  }
+
+  if (expired.length > 0) {
+    console.log(`[Cron] Expired ${expired.length} instant bookings`);
+  }
+  return expired.length;
+};
+
+const scheduleInstantExpiryCleanup = () => {
+  // Every 2 minutes.
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      await runInstantExpiryCleanup();
+    } catch (err) {
+      console.error('[Cron] Instant expiry cleanup failed:', err.message);
+    }
+  });
+};
+
+// Every hour — delete stale 'searching' bookings older than 2 hours (no priest ever assigned)
+const scheduleStaleSearchingCleanup = () => {
+  cron.schedule('0 * * * *', async () => {
+    try {
+      const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const result = await Booking.updateMany(
+        { status: 'searching', createdAt: { $lt: cutoff } },
+        {
+          $set: {
+            status: 'cancelled',
+            cancellationReason: 'No priest accepted the instant booking request',
+          },
+        }
+      );
+      if (result.modifiedCount > 0) {
+        console.log(`[Cron] Cancelled ${result.modifiedCount} stale searching bookings`);
+      }
+    } catch (err) {
+      console.error('[Cron] Stale searching cleanup failed:', err.message);
+    }
+  });
+};
+
+module.exports = {
+  scheduleReminders,
+  schedulePushReminders,
+  scheduleExpiredPaymentCleanup,
+  scheduleStaleSearchingCleanup,
+  scheduleInstantExpiryCleanup,
+  runExpiredPaymentCleanup,
+  runInstantExpiryCleanup,
+};

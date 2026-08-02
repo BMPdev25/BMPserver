@@ -57,6 +57,7 @@ const bookingSchema = new mongoose.Schema({
       'in_progress',
       'completed',
       'cancelled',
+      'rejected',
       'expired',
     ],
     default: 'pending',
@@ -64,7 +65,32 @@ const bookingSchema = new mongoose.Schema({
   bookingType: {
     type: String,
     enum: ['scheduled', 'instant'],
+    required: true,
     default: 'scheduled',
+  },
+  // For instant bookings: which ceremony is requested (no priest chosen yet)
+  ceremonyId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Ceremony',
+    default: null,
+  },
+  // For instant bookings: a preferred priest who gets a head-start before the
+  // request is broadcast to everyone (set when instant is started from a
+  // specific priest's page).
+  preferredPriestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null,
+  },
+  // For instant bookings: when the broadcast (searching) expires.
+  instantExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  // For instant bookings: until when only the preferred priest is notified.
+  headStartExpiresAt: {
+    type: Date,
+    default: null,
   },
   expiryTime: {
     type: Date,
@@ -83,15 +109,8 @@ const bookingSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'completed', 'refunded'],
+    enum: ['pending', 'completed', 'refunding', 'refunded'],
     default: 'pending',
-  },
-  paymentId: {
-    type: String,
-  },
-  paymentMethod: {
-    type: String,
-    enum: ['upi', 'card', 'other'],
   },
   createdAt: {
     type: Date,
@@ -99,16 +118,11 @@ const bookingSchema = new mongoose.Schema({
   },
   notes: {
     type: String,
+    maxlength: [1000, 'Notes cannot exceed 1000 characters'],
   },
   updatedAt: {
     type: Date,
     default: Date.now,
-  },
-  razorpayOrderId: {
-    type: String,
-  },
-  razorpayPaymentId: {
-    type: String,
   },
   cancellationReason: {
     type: String,
@@ -142,24 +156,9 @@ const bookingSchema = new mongoose.Schema({
     receiptNumber: {
       type: String,
     },
-  },
-  // Rating and Review
-  rating: {
-    score: {
-      type: Number,
-      min: 1,
-      max: 5,
-    },
-    review: {
-      type: String,
-    },
-    ratedAt: {
-      type: Date,
-    },
-    isRated: {
-      type: Boolean,
-      default: false,
-    },
+    rzpOrderId: { type: String, default: null },
+    rzpPaymentId: { type: String, default: null },
+    rzpSignature: { type: String, default: null },
   },
   // Real-time Status Tracking
   statusHistory: [
@@ -205,31 +204,35 @@ const bookingSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  paymentExpiresAt: {
+    type: Date,
+    default: null,
+  },
+  devoteeDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  priestDeleted: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 // Create indexes for better query performance
 bookingSchema.index({ devoteeId: 1, createdAt: -1 });
 bookingSchema.index({ priestId: 1, createdAt: -1 });
-bookingSchema.index({ status: 1 });
 bookingSchema.index({ date: 1 });
 bookingSchema.index({ paymentStatus: 1 });
 bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ devoteeId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, status: 1, date: -1 });
+bookingSchema.index({ priestId: 1, date: 1 });
+bookingSchema.index({ status: 1, createdAt: -1 });
 
 // Update the updatedAt field before saving
 bookingSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
-});
-
-// Virtual for checking if booking is upcoming
-bookingSchema.virtual('isUpcoming').get(function () {
-  return this.date > new Date() && this.status === 'confirmed';
-});
-
-// Virtual for checking if booking can be cancelled
-bookingSchema.virtual('canCancel').get(function () {
-  const hoursUntilBooking = (this.date - new Date()) / (1000 * 60 * 60);
-  return hoursUntilBooking > 24 && this.status === 'confirmed';
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

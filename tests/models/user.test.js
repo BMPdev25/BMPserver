@@ -27,7 +27,8 @@ describe('User Model Test', () => {
       err = error;
     }
     expect(err).toBeInstanceOf(mongoose.Error.ValidationError);
-    expect(err.errors.email).toBeDefined();
+    // email is optional (required: false); userType and password (no firebaseUid) are required
+    expect(err.errors.userType).toBeDefined();
     expect(err.errors.password).toBeDefined();
   });
 });

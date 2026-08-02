@@ -1,7 +1,8 @@
-// routes/searchRoutes.js
+﻿// routes/searchRoutes.js
 const express = require('express');
 const router = express.Router();
 const {
+  unifiedSearch,
   universalSearch,
   getPopularCeremonies,
   getCeremonyDetails,
@@ -26,6 +27,9 @@ const searchLimit = rateLimit({
 // Apply authentication middleware to protected routes
 router.use(protect);
 
+// Unified typeahead search (ceremonies + priests)
+router.get('/', searchLimit, unifiedSearch);
+
 // Universal search
 router.get('/universal', searchLimit, universalSearch);
 
@@ -38,3 +42,4 @@ router.get('/ceremonies/categories', getCeremonyCategories);
 router.get('/ceremonies/:ceremonyId', getCeremonyDetails);
 
 module.exports = router;
+

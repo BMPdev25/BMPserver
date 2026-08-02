@@ -11,12 +11,7 @@ const seedData = async () => {
     await mongoose.connect(process.env.MONGO_URI, { dbName: 'bmp' });
     console.log('Connected to MongoDB');
 
-    // 1. Clear existing data
-    await Banner.deleteMany({});
-    await Panchang.deleteMany({});
-    await CeremonyCategory.deleteMany({});
-
-    // 2. Seed Banners
+    // 2. Upsert Banners (keyed on title — skips if already present)
     const banners = [
       {
         title: 'Ganesh Chaturthi Special',
@@ -40,10 +35,12 @@ const seedData = async () => {
         order: 3,
       },
     ];
-    await Banner.insertMany(banners);
+    for (const banner of banners) {
+      await Banner.updateOne({ title: banner.title }, { $setOnInsert: banner }, { upsert: true });
+    }
     console.log('Banners seeded');
 
-    // 3. Seed Panchang (for today and tomorrow)
+    // 3. Upsert Panchang (keyed on date — skips if already present)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -68,10 +65,12 @@ const seedData = async () => {
         auspiciousFor: ['New Business', 'Travel'],
       },
     ];
-    await Panchang.insertMany(panchangData);
+    for (const entry of panchangData) {
+      await Panchang.updateOne({ date: entry.date }, { $setOnInsert: entry }, { upsert: true });
+    }
     console.log('Panchang seeded');
 
-    // 4. Seed Ceremony Categories
+    // 4. Upsert Ceremony Categories (keyed on slug — skips if already present)
     const categories = [
       {
         name: 'Havans',
@@ -102,7 +101,9 @@ const seedData = async () => {
         order: 4,
       },
     ];
-    await CeremonyCategory.insertMany(categories);
+    for (const cat of categories) {
+      await CeremonyCategory.updateOne({ slug: cat.slug }, { $setOnInsert: cat }, { upsert: true });
+    }
     console.log('Ceremony Categories seeded');
 
     console.log('All metadata seeded successfully!');

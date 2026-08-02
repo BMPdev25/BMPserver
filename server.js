@@ -7,6 +7,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const helmet = require('helmet');
 const compression = require('compression');
+const admin = require('./config/firebase');
+const User = require('./models/user');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -19,16 +21,28 @@ const searchRoutes = require('./routes/searchRoutes');
 const ceremonyRoutes = require('./routes/ceremonyRoutes');
 const languageRoutes = require('./routes/languageRoutes');
 const walletRoutes = require('./routes/walletRoutes');
-const reviewRoutes = require('./routes/reviewRoutes');
 const metadataRoutes = require('./routes/metadataRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const { scheduleReminders } = require('./jobs/cronJobs');
+const paymentRoutes = require('./routes/paymentRoutes');
+const {
+  scheduleReminders,
+  schedulePushReminders,
+  scheduleExpiredPaymentCleanup,
+  scheduleStaleSearchingCleanup,
+  scheduleInstantExpiryCleanup,
+} = require('./jobs/cronJobs');
 
 // Load environment variables
 dotenv.config();
 
 // Start cron jobs
-scheduleReminders();
+if (process.env.NODE_ENV !== 'test') {
+  scheduleReminders();
+  schedulePushReminders();
+  scheduleExpiredPaymentCleanup();
+  scheduleStaleSearchingCleanup();
+  scheduleInstantExpiryCleanup();
+}
 
 // Create Express app
 const app = express();
@@ -41,46 +55,63 @@ const io = socketIo(server, {
   },
 });
 
-// Map to store connected users and their socket IDs
+// Map to store connected users and their socket IDs (userId -> Set of socket.id)
 const userSockets = new Map();
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
   socket.on('register', (userId) => {
-    if (userId) {
-      userSockets.set(userId.toString(), socket.id);
-      socket.userId = userId.toString();
-      console.log(`User ${userId} registered with socket ${socket.id}`);
+    if (!userId) return;
+    const uidStr = userId.toString();
+    if (!userSockets.has(uidStr)) {
+      userSockets.set(uidStr, new Set());
     }
+    userSockets.get(uidStr).add(socket.id);
+    socket.userId = uidStr;
+    console.log(`[Socket] ${userId} registered with socket ${socket.id}`);
   });
 
   socket.on('disconnect', () => {
     if (socket.userId) {
-      userSockets.delete(socket.userId);
-      console.log(`User ${socket.userId} disconnected`);
+      const socketSet = userSockets.get(socket.userId);
+      if (socketSet) {
+        socketSet.delete(socket.id);
+        console.log(`[Socket] ${socket.userId} unregistered socket ${socket.id}`);
+        if (socketSet.size === 0) {
+          userSockets.delete(socket.userId);
+          console.log(`[Socket] ${socket.userId} disconnected (no active sockets left)`);
+        }
+      }
     }
   });
 });
 
-// Make io and userSockets accessible in controllers
+// Make io and userSockets accessible in controllers (via req.app) and in
+// services that have no request context (via globals — used by the instant
+// booking broadcast).
 app.set('io', io);
 app.set('userSockets', userSockets);
+global.io = io;
+global.userSockets = userSockets;
 
 // Security and performance middleware
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Disable CSP for development
-  })
-);
+app.use(helmet());
 app.use(compression());
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({
+  limit: '1mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(
   cors({
-    origin: '*',
+    origin: process.env.NODE_ENV === 'production'
+      ? (process.env.CLIENT_URL || 'http://localhost:3000')
+      : true, // Allow all origins in development (needed for mobile app)
     credentials: true,
   })
 );
@@ -94,6 +125,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    success: true,
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Register API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/priest', priestRoutes); // Changed from /api/priests to /api/priest
@@ -105,9 +145,9 @@ app.use('/api/search', searchRoutes);
 app.use('/api/ceremonies', ceremonyRoutes);
 app.use('/api/languages', languageRoutes);
 app.use('/api/wallet', walletRoutes);
-app.use('/api/reviews', reviewRoutes);
 app.use('/api/metadata', metadataRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Dev-Only Test Fixtures for Maestro (Protected internally by NODE_ENV)
 app.use('/api/test', require('./routes/testFixtures'));
@@ -128,6 +168,19 @@ if (require.main === module) {
     console.log(`Server running on 0.0.0.0:${PORT}`);
     console.log('Socket.IO enabled for real-time features');
   });
+
+  const shutdown = (signal) => {
+    console.log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      mongoose.connection.close().then(() => {
+        console.log('MongoDB connection closed');
+        process.exit(0);
+      }).catch(() => process.exit(1));
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 module.exports = { app, server };

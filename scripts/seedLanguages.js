@@ -31,22 +31,17 @@ async function seedLanguages() {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
 
-    // Clear existing languages
-    await Language.deleteMany({});
-    console.log('Cleared existing languages');
-
-    // Insert new languages
-    await Language.insertMany(languages);
-    console.log(`Successfully seeded ${languages.length} languages`);
-
-    // Display seeded languages
-    const seededLanguages = await Language.find().sort({ rank: 1 });
-    console.log('\nSeeded Languages:');
-    seededLanguages.forEach((lang) => {
-      console.log(
-        `${lang.rank}. ${lang.name} (${lang.nativeName}) - ${lang.speakersInMillions}M speakers`
+    // Upsert languages — skips existing records, inserts missing ones (keyed on code)
+    let insertedCount = 0;
+    for (const lang of languages) {
+      const result = await Language.updateOne(
+        { code: lang.code },
+        { $setOnInsert: lang },
+        { upsert: true }
       );
-    });
+      if (result.upsertedCount) insertedCount++;
+    }
+    console.log(`Seeded languages: ${insertedCount} inserted, ${languages.length - insertedCount} already existed`);
 
     process.exit(0);
   } catch (error) {
