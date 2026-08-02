@@ -289,9 +289,8 @@ const createBooking = async (devoteeId, bookingData) => {
 
   const now = new Date();
   const minLeadTime = 2 * 60 * 60 * 1000;
-  const bookingStartTime = new Date(date);
-  const [h, m] = startTime.split(':').map(Number);
-  bookingStartTime.setHours(h, m, 0, 0);
+  const dateStr = typeof date === 'string' ? date.split('T')[0] : new Date(date).toISOString().split('T')[0];
+  const bookingStartTime = new Date(`${dateStr}T${startTime}:00+05:30`);
 
   if (bookingStartTime.getTime() - now.getTime() < minLeadTime) {
     const error = new Error('Bookings must be made at least 2 hours in advance');
@@ -535,10 +534,10 @@ const broadcastInstantBooking = async (booking, options = {}) => {
   const priestUserIds = availablePriests.map((p) => p.userId.toString());
 
   const notifyPriest = async (priestUserId) => {
-    const socketId =
+    const socketIds =
       userSockets && typeof userSockets.get === 'function' ? userSockets.get(priestUserId) : null;
-    if (socketId && io) {
-      io.to(socketId).emit('new_instant_request', {
+    if (socketIds && io) {
+      const eventData = {
         bookingId: booking._id,
         ceremonyType: booking.ceremonyType,
         date: booking.date,
@@ -547,7 +546,14 @@ const broadcastInstantBooking = async (booking, options = {}) => {
         basePrice: booking.basePrice,
         isInstant: true,
         expiresAt: booking.instantExpiresAt,
-      });
+      };
+      if (socketIds instanceof Set || Array.isArray(socketIds) || typeof socketIds.forEach === 'function') {
+        socketIds.forEach((socketId) => {
+          io.to(socketId).emit('new_instant_request', eventData);
+        });
+      } else if (typeof socketIds === 'string') {
+        io.to(socketIds).emit('new_instant_request', eventData);
+      }
     }
     await pushService.sendToUser(
       priestUserId,
@@ -694,22 +700,22 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     }
   }
 
-  booking.status = status;
-  if (status === 'completed') {
-    booking.completionDate = new Date();
-  } else if (status === 'cancelled' || status === 'rejected') {
-    booking.cancellationDate = new Date();
-    booking.cancellationReason = reason;
+  if (status !== 'completed') {
+    booking.status = status;
+    if (status === 'cancelled' || status === 'rejected') {
+      booking.cancellationDate = new Date();
+      booking.cancellationReason = reason;
+    }
+
+    booking.statusHistory.push({
+      status,
+      timestamp: new Date(),
+      updatedBy: userId,
+      reason: reason || `Status changed to ${status}`,
+    });
+
+    await booking.save();
   }
-
-  booking.statusHistory.push({
-    status,
-    timestamp: new Date(),
-    updatedBy: userId,
-    reason: reason || `Status changed to ${status}`,
-  });
-
-  await booking.save();
 
   if (status === 'confirmed') {
     await pushService.notifyDevoteeBookingConfirmed(
@@ -788,67 +794,42 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
 
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
+    const session = await mongoose.startSession();
     try {
-      const priestShare = booking.basePrice;
-      const commissionAmount = booking.platformFee;
+      await session.withTransaction(async () => {
+        // 1. Update booking status within transaction
+        booking.status = status;
+        booking.completionDate = new Date();
+        booking.statusHistory.push({
+          status,
+          timestamp: new Date(),
+          updatedBy: userId,
+          reason: reason || `Status changed to ${status}`,
+        });
+        await booking.save({ session });
 
-      // Ensure wallet exists before creating the transaction
-      const wallet = await getOrCreateWallet(booking.priestId);
-
-      // ATOMIC gate: unique index on (bookingId, type='credit_for_booking') prevents
-      // double-credit even under concurrent requests. If this throws error.code 11000,
-      // another request already processed this booking.
-      await Transaction.create({
-        priestId: booking.priestId,
-        walletId: wallet._id,
-        bookingId: booking._id,
-        type: 'credit_for_booking',
-        direction: 'inflow',
-        amount: priestShare,
-        status: 'completed',
-        description: `Earnings for ${booking.ceremonyType}`,
+        // 2. Invoke the commission engine (which handles Wallet, Transaction, CompanyRevenue, PriestProfile, and paymentStatus updates)
+        const { processBookingCompletion } = require('./commissionEngine');
+        await processBookingCompletion(booking._id, { session });
       });
 
-      // Atomic $inc — safe even if called concurrently (no read-modify-write)
-      await Wallet.findOneAndUpdate(
-        { priestId: booking.priestId },
-        { $inc: { currentBalance: priestShare, totalCredited: priestShare } }
-      );
-
-      await CompanyRevenue.create({
-        bookingId: booking._id,
-        priestId: booking.priestId,
-        totalAmount: booking.totalAmount,
-        commissionAmount: commissionAmount,
-        commissionRate: PLATFORM_FEE_PERCENT,
-        priestShare: priestShare,
-      });
-
+      // Send push notification outside the transaction session to prevent locking delays
       await pushService.notifyPriestPaymentCredited(
         booking.priestId._id || booking.priestId,
         booking,
-        priestShare
-      );
+        booking.basePrice
+      ).catch(() => {});
 
-      // pendingPayments = money credited to wallet but not yet withdrawn
-      await PriestProfile.findOneAndUpdate(
-        { userId: booking.priestId },
-        {
-          $inc: {
-            ceremonyCount: 1,
-            'earnings.totalEarnings': priestShare,
-            'earnings.thisMonth': priestShare,
-            'earnings.pendingPayments': priestShare,
-          },
-        }
-      );
     } catch (e) {
-      if (e.code === 11000) {
-        // Duplicate key on (bookingId, type) — already processed, not an error
+      if (e.code === 11000 || e.message?.includes('already been processed')) {
+        // Already processed — not an error
         console.log(`[Wallet] Booking ${booking._id} already credited. Skipping.`);
       } else {
         console.warn('Ledger update failed:', e.message);
+        throw e;
       }
+    } finally {
+      session.endSession();
     }
   }
 
@@ -1111,6 +1092,36 @@ const createPaymentOrder = async (bookingId, userId) => {
     const error = new Error('This booking has already been paid for');
     error.statusCode = 409;
     throw error;
+  }
+
+  // Prevent overlap race conditions: Check if the priest is still available for this slot
+  if (booking.priestId) {
+    const bookingDay = new Date(booking.date);
+    const startOfDay = new Date(bookingDay);
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const endOfDay = new Date(bookingDay);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    // Fetch all active, paid/confirmed bookings for the same priest on that day
+    const activeBookings = await Booking.find({
+      _id: { $ne: booking._id },
+      priestId: booking.priestId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      status: { $in: ['confirmed', 'arrived', 'in_progress', 'completed'] },
+    }).select('startTime endTime');
+
+    const conflict = activeBookings.find((other) =>
+      timesOverlap(booking.startTime, booking.endTime, other.startTime, other.endTime)
+    );
+
+    if (conflict) {
+      const error = new Error(
+        'The priest is no longer available at this time. Another devotee completed their booking.'
+      );
+      error.statusCode = 409;
+      error.code = 'PRIEST_CLASH';
+      throw error;
+    }
   }
 
   const rzp = getRazorpayInstance();

@@ -11,7 +11,7 @@ let mongoServer
 
 // ── Hooks used by setupFilesAfterFramework ────────────────────────────
 beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create()
+  mongoServer = await MongoMemoryServer.create({ replSet: { count: 1 } })
   const uri = mongoServer.getUri()
   await mongoose.connect(uri)
 })
@@ -31,7 +31,7 @@ afterEach(async () => {
 // ── Legacy exports for old test files ────────────────────────────────
 module.exports.connect = async () => {
   if (mongoose.connection.readyState === 0) {
-    mongoServer = await MongoMemoryServer.create()
+    mongoServer = await MongoMemoryServer.create({ replSet: { count: 1 } })
     const uri = mongoServer.getUri()
     await mongoose.connect(uri)
   }

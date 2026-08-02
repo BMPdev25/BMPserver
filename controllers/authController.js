@@ -74,19 +74,12 @@ exports.firebaseSync = async (req, res) => {
       if (!userType) {
         return res.status(404).json({ message: 'No account found. Please register to continue.' });
       }
-      if (
-        userType === 'priest' &&
-        (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)
-      ) {
-        return res.status(400).json({ message: 'Priests must select at least one language.' });
-      }
-      
       const newUserData = {
         name: name || decodedToken.name || 'New User',
         firebaseUid: uid,
         userType: userType,
         expoPushToken: pushToken || null,
-        ...(userType === 'priest' && languagesSpoken ? { languagesSpoken } : {}),
+        ...(userType === 'priest' ? { languagesSpoken: languagesSpoken || [] } : {}),
       };
       
       // Only set email and phone if they exist, preventing MongoDB from storing null
@@ -328,19 +321,12 @@ exports.verifyOtp = async (req, res) => {
           message: 'userType is required for new registration. Must be "devotee" or "priest".',
         });
       }
-      // Mirror firebaseSync: priests must select at least one language at registration
-      if (
-        userType === 'priest' &&
-        (!languagesSpoken || !Array.isArray(languagesSpoken) || languagesSpoken.length === 0)
-      ) {
-        return res.status(400).json({ message: 'Priests must select at least one language.' });
-      }
       const type = userType;
       user = new User({
         name: name || 'New User',
         phone: e164,
         userType: type,
-        ...(type === 'priest' && languagesSpoken ? { languagesSpoken } : {}),
+        ...(type === 'priest' ? { languagesSpoken: languagesSpoken || [] } : {}),
       });
       // Set firebaseUid before the first save: the schema requires `password`
       // unless firebaseUid is present, and OTP users have no password. _id is

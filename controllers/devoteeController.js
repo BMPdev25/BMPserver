@@ -4,7 +4,6 @@ const bookingService = require('../services/bookingService');
 const User = require('../models/user');
 const Booking = require('../models/booking');
 const Notification = require('../models/notification');
-const Review = require('../models/review');
 const PriestProfile = require('../models/priestProfile');
 const Ceremony = require('../models/ceremony');
 

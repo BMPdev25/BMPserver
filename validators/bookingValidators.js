@@ -18,8 +18,11 @@ const createBookingRules = [
     .isISO8601()
     .withMessage('Date must be a valid date (YYYY-MM-DD)')
     .custom((value) => {
-      const bookingDate = new Date(value);
-      if (bookingDate < new Date().setHours(0, 0, 0, 0)) {
+      const { toISTMidnight } = require('../utils/dateWindows');
+      const bookingDate = toISTMidnight(new Date(value));
+      const todayIST = toISTMidnight(new Date());
+
+      if (bookingDate < todayIST) {
         throw new Error('Booking date cannot be in the past');
       }
       const sixMonthsLater = new Date();

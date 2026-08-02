@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const Booking = require('../models/booking');
-const Review = require('../models/review');
+const Rating = require('../models/rating');
 
 // Security middleware to ensure these routes NEVER run in production
 // and require a secret key in non-production environments.
@@ -25,16 +25,18 @@ router.use((req, res, next) => {
 // Teardown API: Deletes all test records
 router.post('/teardown', async (req, res) => {
   try {
+    const testBookings = await Booking.find({ isTestRecord: true }).select('_id');
+    const testBookingIds = testBookings.map((b) => b._id);
+    const ratingResult = await Rating.deleteMany({ bookingId: { $in: testBookingIds } });
     const userResult = await User.deleteMany({ isTestRecord: true });
     const bookingResult = await Booking.deleteMany({ isTestRecord: true });
-    const reviewResult = await Review.deleteMany({ isTestRecord: true });
 
     res.json({
       success: true,
       deletedCount: {
         users: userResult.deletedCount,
         bookings: bookingResult.deletedCount,
-        reviews: reviewResult.deletedCount,
+        ratings: ratingResult.deletedCount,
       },
     });
   } catch (error) {
@@ -47,9 +49,11 @@ router.post('/teardown', async (req, res) => {
 router.post('/seed/booking', async (req, res) => {
   try {
     // First, force a teardown of old test data to ensure a clean slate
+    const testBookings = await Booking.find({ isTestRecord: true }).select('_id');
+    const testBookingIds = testBookings.map((b) => b._id);
+    await Rating.deleteMany({ bookingId: { $in: testBookingIds } });
     await User.deleteMany({ isTestRecord: true });
     await Booking.deleteMany({ isTestRecord: true });
-    await Review.deleteMany({ isTestRecord: true });
 
     const { bookingStatus = 'pending', paymentStatus = 'pending' } = req.body;
 

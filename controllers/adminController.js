@@ -1,6 +1,6 @@
 // controllers/adminController.js
 const adminService = require('../services/adminService');
-const { uploadPublicFile, deletePublicFile } = require('../services/storageService');
+const { uploadPublicFile, deletePublicFile, getPresignedUrl } = require('../services/storageService');
 const { keyFromPublicUrl } = require('../utils/s3Keys');
 
 // --- PUJARI VERIFICATION ---
@@ -26,6 +26,21 @@ exports.reviewDocument = async (req, res, next) => {
       return res.status(400).json({ message: 'Invalid status' });
     await adminService.reviewDocument(priestId, docType, status);
     res.status(200).json({ success: true, message: `Document ${docType} marked as ${status}` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getDocumentPresignedUrl = async (req, res, next) => {
+  try {
+    const { priestId, docType } = req.params;
+    const PriestProfile = require('../models/priestProfile');
+    const profile = await PriestProfile.findOne({ userId: priestId });
+    if (!profile) return res.status(404).json({ success: false, message: 'Priest profile not found' });
+    const doc = (profile.verificationDocuments || []).find((d) => d.type === docType);
+    if (!doc || !doc.url) return res.status(404).json({ success: false, message: 'Document not found or not uploaded yet' });
+    const presignedUrl = await getPresignedUrl(doc.url, 3600); // 1-hour expiry
+    res.status(200).json({ success: true, data: { url: presignedUrl } });
   } catch (error) {
     next(error);
   }

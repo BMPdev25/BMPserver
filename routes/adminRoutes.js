@@ -26,6 +26,7 @@ router.get('/dashboard/stats', adminController.getStats);
 
 // Pujari Verifications
 router.get('/verifications/pending', adminController.getPendingVerifications);
+router.get('/verifications/:priestId/documents/:docType/url', adminController.getDocumentPresignedUrl);
 router.put('/verifications/:priestId/documents/:docType', adminController.reviewDocument);
 router.put('/verifications/:priestId/status', adminController.updateVerificationStatus);
 

@@ -11,8 +11,13 @@ const scheduleReminders = () => {
     try {
       const now = moment();
 
-      // Look for confirmed bookings
-      const bookings = await Booking.find({ status: 'confirmed' });
+      // Look for confirmed bookings within a 3-day window to optimize query performance
+      const today = moment().startOf('day').toDate();
+      const dayAfterTomorrow = moment().add(2, 'days').endOf('day').toDate();
+      const bookings = await Booking.find({
+        status: 'confirmed',
+        date: { $gte: today, $lte: dayAfterTomorrow },
+      });
 
       for (const booking of bookings) {
         if (!booking.date || !booking.startTime) continue;
