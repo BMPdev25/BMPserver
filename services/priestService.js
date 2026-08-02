@@ -1,5 +1,6 @@
 // services/priestService.js
 const PriestProfile = require('../models/priestProfile');
+const Ceremony = require('../models/ceremony');
 const Booking = require('../models/booking');
 const Transaction = require('../models/transaction');
 const Notification = require('../models/notification');
@@ -24,10 +25,43 @@ const PRIEST_PROFILE_EDITABLE_FIELDS = [
   'profilePicture',
 ];
 
+// Ensures every service references an active catalog ceremony and is priced
+// at or above the base price the admin configured for that ceremony — a
+// priest may charge more than the base price, never less.
+const validateServicePricing = async (services) => {
+  if (!services || services.length === 0) return;
+
+  const ceremonyIds = services.map((s) => s.ceremonyId).filter(Boolean);
+  const ceremonies = await Ceremony.find({ _id: { $in: ceremonyIds }, isActive: true })
+    .select('name pricing.basePrice')
+    .lean();
+  const ceremonyMap = new Map(ceremonies.map((c) => [c._id.toString(), c]));
+
+  for (const service of services) {
+    const ceremony = ceremonyMap.get(String(service.ceremonyId));
+    if (!ceremony) {
+      const error = new Error('One or more selected ceremonies are no longer available');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (service.price < ceremony.pricing.basePrice) {
+      const error = new Error(
+        `Price for "${ceremony.name}" must be at least ₹${ceremony.pricing.basePrice.toLocaleString('en-IN')} (base price set by admin)`
+      );
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+};
+
 const updateProfile = async (userId, updateData) => {
   const safeUpdate = {};
   for (const key of PRIEST_PROFILE_EDITABLE_FIELDS) {
     if (updateData[key] !== undefined) safeUpdate[key] = updateData[key];
+  }
+
+  if (safeUpdate.services) {
+    await validateServicePricing(safeUpdate.services);
   }
 
   let profile = await PriestProfile.findOne({ userId });

@@ -41,6 +41,7 @@ router.get('/ceremonies', adminController.getAllCeremonies);
 router.post('/ceremonies', upload.array('images', 5), adminController.createCeremony);
 router.put('/ceremonies/:id', upload.array('images', 5), adminController.updateCeremony);
 router.delete('/ceremonies/:id', adminController.deleteCeremony);
+router.delete('/ceremonies/:id/permanent', adminController.hardDeleteCeremony);
 
 // Devotees List & Status Management
 router.get('/devotees', adminController.getAllDevotees);

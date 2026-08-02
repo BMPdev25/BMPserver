@@ -107,6 +107,32 @@ const deleteCeremony = async (id) => {
   return await Ceremony.findByIdAndUpdate(id, { isActive: false }, { new: true });
 };
 
+// Permanently removes a ceremony from the catalog. Blocked if any pujari
+// still has it in their services[] — deleting it out from under them would
+// leave a dangling ceremonyId reference (breaking their profile display and
+// new-booking creation, which looks up the ceremony by this id). Admin should
+// deactivate it (or have affected pujaris drop it) first.
+const hardDeleteCeremony = async (id) => {
+  const ceremony = await Ceremony.findById(id);
+  if (!ceremony) {
+    const error = new Error('Ceremony not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const priestCount = await PriestProfile.countDocuments({ 'services.ceremonyId': id });
+  if (priestCount > 0) {
+    const error = new Error(
+      `Cannot permanently delete — ${priestCount} pujari${priestCount > 1 ? 's' : ''} still offer this ceremony. Deactivate it instead, or have them remove it from their services first.`
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  await Ceremony.findByIdAndDelete(id);
+  return ceremony;
+};
+
 // --- DEVOTEE MANAGEMENT ---
 
 const getAllDevotees = async () => {
@@ -282,7 +308,7 @@ const updateBookingItemsStatus = async (id, itemsDeliveryStatus) => {
 
 const getAllPujaris = async (params = {}) => {
   let priests = await User.find({ userType: 'priest' })
-    .populate('priestProfile')
+    .populate('priestProfile', 'verificationStatus onboardingCompleted')
     .sort({ name: 1 });
 
   if (params.search) {
@@ -360,6 +386,7 @@ module.exports = {
   createCeremony,
   updateCeremony,
   deleteCeremony,
+  hardDeleteCeremony,
   getAllDevotees,
   toggleUserStatus,
   getStats,

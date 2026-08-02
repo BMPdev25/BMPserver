@@ -250,6 +250,22 @@ exports.deleteCeremony = async (req, res, next) => {
   }
 };
 
+exports.hardDeleteCeremony = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const ceremony = await adminService.hardDeleteCeremony(id);
+    if (ceremony.images && ceremony.images.length > 0) {
+      for (const img of ceremony.images) {
+        const oldKey = keyFromPublicUrl(img.url);
+        if (oldKey) await deletePublicFile(oldKey).catch(() => {});
+      }
+    }
+    res.status(200).json({ success: true, message: 'Ceremony permanently deleted' });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // --- DEVOTEE MANAGEMENT ---
 
 exports.getAllDevotees = async (req, res, next) => {
