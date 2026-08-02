@@ -49,16 +49,25 @@ const issueRefundIfPaid = async (bookingId, booking, reason) => {
   if (booking.paymentStatus !== 'completed' || !booking.paymentDetails?.rzpPaymentId) {
     return;
   }
+
+  // Atomically claim the refund slot — prevents double refund under concurrent calls
+  const claimed = await Booking.findOneAndUpdate(
+    { _id: bookingId, paymentStatus: 'completed' },
+    { $set: { paymentStatus: 'refunding' } },
+    { new: true }
+  );
+  if (!claimed) return; // already refunded or refunding
+
   try {
     const rzp = getRazorpayInstance();
-    const refund = await rzp.payments.refund(booking.paymentDetails.rzpPaymentId, {
-      amount: booking.totalAmount * 100,
+    const refund = await rzp.payments.refund(claimed.paymentDetails.rzpPaymentId, {
+      amount: claimed.totalAmount * 100,
       notes: { reason },
     });
-    await Booking.findByIdAndUpdate(bookingId, {
+    await Booking.findByIdAndUpdate(claimed._id, {
       $set: {
         paymentStatus: 'refunded',
-        'paymentDetails.refundAmount': booking.totalAmount,
+        'paymentDetails.refundAmount': claimed.totalAmount,
         'paymentDetails.refundReason': reason,
         'paymentDetails.refundDate': new Date(),
       },
@@ -66,7 +75,10 @@ const issueRefundIfPaid = async (bookingId, booking, reason) => {
     booking.paymentStatus = 'refunded';
     console.log(`[Refund] Initiated for booking ${bookingId}: refund ${refund.id}`);
   } catch (refundErr) {
-    // Log for support team — do not block the cancellation
+    // Revert claim so the refund can be retried
+    await Booking.findByIdAndUpdate(claimed._id, {
+      $set: { paymentStatus: 'completed' },
+    });
     console.error(`[Refund] FAILED for booking ${bookingId}:`, refundErr.message);
   }
 };
@@ -135,7 +147,7 @@ const getBookings = async (userId, userType, { category, status, page = 1, limit
   }
 
   if (status && status !== 'all') {
-    query.status = status;
+    query.status = Array.isArray(status) ? { $in: status } : status;
   }
 
   // Apply category as a DB-level filter so pagination counts are accurate
@@ -212,10 +224,10 @@ const getBookingDetails = async (bookingId, userId) => {
     throw error;
   }
 
-  const devoteeIdStr = booking.devoteeId?._id?.toString() || booking.devoteeId?.toString();
-  const priestIdStr = booking.priestId?._id?.toString() || booking.priestId?.toString();
-  const callerIsDevotee = devoteeIdStr === userId;
-  const callerIsPriest = priestIdStr === userId;
+  const devoteeIdStr = booking.devoteeId?._id?.toString() ?? booking.devoteeId?.toString() ?? null;
+  const priestIdStr = booking.priestId?._id?.toString() ?? booking.priestId?.toString() ?? null;
+  const callerIsDevotee = devoteeIdStr !== null && devoteeIdStr === userId;
+  const callerIsPriest = priestIdStr !== null && priestIdStr === userId;
   if (!callerIsDevotee && !callerIsPriest) {
     const error = new Error('Access denied');
     error.statusCode = 403;
@@ -325,7 +337,7 @@ const createBooking = async (devoteeId, bookingData) => {
   }
 
   const priestProfile = await PriestProfile.findOne({ userId: priestId });
-  if (priestProfile && !priestProfile.isVerified) {
+  if (priestProfile && priestProfile.verificationStatus !== 'approved') {
     const error = new Error(
       'This priest has not been verified yet. Bookings cannot be created for unverified priests.'
     );
@@ -520,7 +532,7 @@ const broadcastInstantBooking = async (booking, options = {}) => {
   const userSockets = global.userSockets || null; // Map<userId, socketId>
 
   const availablePriests = await PriestProfile.find({
-    isVerified: true,
+    verificationStatus: 'approved',
     'currentAvailability.status': 'available',
     'services.ceremonyId': booking.ceremonyId,
   })
@@ -612,14 +624,14 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     cancelled: [],
   };
 
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).populate('devoteeId', 'name phone email');
   if (!booking) {
     const error = new Error('Booking not found');
     error.statusCode = 404;
     throw error;
   }
 
-  if (booking.priestId.toString() !== userId) {
+  if (!booking.priestId || booking.priestId.toString() !== userId) {
     const error = new Error('Only the assigned priest can change the booking status');
     error.statusCode = 403;
     throw error;
@@ -712,29 +724,20 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
   await booking.save();
 
   if (status === 'confirmed') {
-    await pushService.notifyDevoteeBookingConfirmed(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeBookingConfirmed(booking.devoteeId._id, booking);
   }
 
   if (status === 'cancelled') {
     // Refund the devotee if they had already paid before the priest cancelled
     await issueRefundIfPaid(booking._id, booking, reason || 'Cancelled by priest');
     // This endpoint is priestOnly — the priest is always the caller here
-    await pushService.notifyDevoteeCancelledByPriest(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeCancelledByPriest(booking.devoteeId._id, booking);
   }
 
   if (status === 'rejected') {
     // Refund the devotee if they had already paid before the priest declined
     await issueRefundIfPaid(booking._id, booking, reason || 'Declined by priest');
-    await pushService.notifyDevoteeBookingDeclined(
-      booking.devoteeId._id || booking.devoteeId,
-      booking
-    );
+    await pushService.notifyDevoteeBookingDeclined(booking.devoteeId._id, booking);
   }
 
   // Auto-cancel concurrent pending requests if confirmed
@@ -788,67 +791,94 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
 
   // Analytics and Wallet updates for completed bookings
   if (status === 'completed') {
+    const priestShare = booking.basePrice;
+    const commissionAmount = booking.platformFee;
+
+    // Ensure the wallet exists before the ledger transaction. (Kept outside the
+    // session so a brand-new wallet is committed independently of the credit.)
+    const wallet = await getOrCreateWallet(booking.priestId);
+
+    // All four ledger writes must commit together or not at all — a partial
+    // failure here is financial drift (e.g. wallet credited but no Transaction
+    // row, or revenue recorded without crediting the priest). Wrap them in a
+    // single MongoDB transaction (Atlas supports sessions).
+    const session = await mongoose.startSession();
     try {
-      const priestShare = booking.basePrice;
-      const commissionAmount = booking.platformFee;
+      await session.withTransaction(async () => {
+        // ATOMIC idempotency gate: the unique index on (bookingId,
+        // type='credit_for_booking') prevents double-credit even under
+        // concurrent requests. A duplicate throws error.code 11000, which
+        // aborts the whole transaction and is handled as a no-op below.
+        // (create() must use the array form to accept a session.)
+        await Transaction.create(
+          [
+            {
+              priestId: booking.priestId,
+              walletId: wallet._id,
+              bookingId: booking._id,
+              type: 'credit_for_booking',
+              direction: 'inflow',
+              amount: priestShare,
+              status: 'completed',
+              description: `Earnings for ${booking.ceremonyType}`,
+            },
+          ],
+          { session }
+        );
 
-      // Ensure wallet exists before creating the transaction
-      const wallet = await getOrCreateWallet(booking.priestId);
+        // Atomic $inc — safe even if called concurrently (no read-modify-write)
+        await Wallet.findOneAndUpdate(
+          { priestId: booking.priestId },
+          { $inc: { currentBalance: priestShare, totalCredited: priestShare } },
+          { session }
+        );
 
-      // ATOMIC gate: unique index on (bookingId, type='credit_for_booking') prevents
-      // double-credit even under concurrent requests. If this throws error.code 11000,
-      // another request already processed this booking.
-      await Transaction.create({
-        priestId: booking.priestId,
-        walletId: wallet._id,
-        bookingId: booking._id,
-        type: 'credit_for_booking',
-        direction: 'inflow',
-        amount: priestShare,
-        status: 'completed',
-        description: `Earnings for ${booking.ceremonyType}`,
+        await CompanyRevenue.create(
+          [
+            {
+              bookingId: booking._id,
+              priestId: booking.priestId,
+              totalAmount: booking.totalAmount,
+              commissionAmount: commissionAmount,
+              commissionRate: PLATFORM_FEE_PERCENT,
+              priestShare: priestShare,
+            },
+          ],
+          { session }
+        );
+
+        // pendingPayments = money credited to wallet but not yet withdrawn
+        await PriestProfile.findOneAndUpdate(
+          { userId: booking.priestId },
+          {
+            $inc: {
+              ceremonyCount: 1,
+              'earnings.totalEarnings': priestShare,
+              'earnings.pendingPayments': priestShare,
+            },
+          },
+          { session }
+        );
       });
 
-      // Atomic $inc — safe even if called concurrently (no read-modify-write)
-      await Wallet.findOneAndUpdate(
-        { priestId: booking.priestId },
-        { $inc: { currentBalance: priestShare, totalCredited: priestShare } }
-      );
-
-      await CompanyRevenue.create({
-        bookingId: booking._id,
-        priestId: booking.priestId,
-        totalAmount: booking.totalAmount,
-        commissionAmount: commissionAmount,
-        commissionRate: PLATFORM_FEE_PERCENT,
-        priestShare: priestShare,
-      });
-
+      // Side-effecting push — sent only after the ledger has committed, so a
+      // transaction rollback (or duplicate-key abort) never fires a false
+      // "payment credited" notification.
       await pushService.notifyPriestPaymentCredited(
         booking.priestId._id || booking.priestId,
         booking,
         priestShare
       );
-
-      // pendingPayments = money credited to wallet but not yet withdrawn
-      await PriestProfile.findOneAndUpdate(
-        { userId: booking.priestId },
-        {
-          $inc: {
-            ceremonyCount: 1,
-            'earnings.totalEarnings': priestShare,
-            'earnings.thisMonth': priestShare,
-            'earnings.pendingPayments': priestShare,
-          },
-        }
-      );
     } catch (e) {
       if (e.code === 11000) {
-        // Duplicate key on (bookingId, type) — already processed, not an error
+        // Duplicate key on (bookingId, type) — already processed, not an error.
+        // The transaction aborted, so nothing was credited twice.
         console.log(`[Wallet] Booking ${booking._id} already credited. Skipping.`);
       } else {
         console.warn('Ledger update failed:', e.message);
       }
+    } finally {
+      await session.endSession();
     }
   }
 
@@ -907,7 +937,7 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
   const priestProfile = await PriestProfile.findOne({ userId: priestId });
-  if (priestProfile && !priestProfile.isVerified) {
+  if (priestProfile && priestProfile.verificationStatus !== 'approved') {
     const error = new Error('Only verified priests can accept bookings.');
     error.statusCode = 403;
     throw error;
@@ -1010,16 +1040,13 @@ const acceptInstantBooking = async (bookingId, priestId) => {
     throw error;
   }
 
-  // Tell the devotee a priest has been assigned and payment is now required.
-  await pushService.notifyDevoteeBookingConfirmed(
-    claimed.devoteeId._id || claimed.devoteeId,
-    claimed
-  );
-
   await claimed.populate([
     { path: 'devoteeId', select: 'name phone email' },
     { path: 'priestId', select: 'name phone email' },
   ]);
+
+  // Tell the devotee a priest was found and they must pay to confirm.
+  await pushService.notifyDevoteePriestFoundPayNow(claimed.devoteeId._id, claimed);
 
   return claimed;
 };
@@ -1158,7 +1185,11 @@ const createPaymentOrder = async (bookingId, userId) => {
   return order;
 };
 
-const verifyPayment = async (bookingId, paymentData) => {
+const verifyPayment = async (bookingId, paymentData, userId) => {
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error('Payment verification not configured');
+  }
+
   const { rzpPaymentId, rzpOrderId, rzpSignature } = paymentData;
 
   const booking = await Booking.findById(bookingId);
@@ -1166,6 +1197,10 @@ const verifyPayment = async (bookingId, paymentData) => {
     const error = new Error('Booking not found');
     error.statusCode = 404;
     throw error;
+  }
+
+  if (booking.devoteeId.toString() !== userId.toString()) {
+    throw Object.assign(new Error('Access denied'), { statusCode: 403 });
   }
 
   // Reject if payment window has expired
@@ -1188,9 +1223,12 @@ const verifyPayment = async (bookingId, paymentData) => {
 
   const hmac = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET);
   hmac.update(rzpOrderId + '|' + rzpPaymentId);
-  const generatedSignature = hmac.digest('hex');
+  const expected = hmac.digest('hex');
+  const valid =
+    expected.length === rzpSignature.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(rzpSignature));
 
-  if (generatedSignature !== rzpSignature) {
+  if (!valid) {
     const error = new Error('Payment verification failed');
     error.statusCode = 400;
     throw error;

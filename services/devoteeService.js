@@ -1,8 +1,8 @@
 // services/devoteeService.js
 const User = require('../models/user');
 const PriestProfile = require('../models/priestProfile');
-const Ceremony = require('../models/ceremony');
 const mongoose = require('mongoose');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 const getAllPriests = async () => {
   return await PriestProfile.find({})
@@ -12,58 +12,6 @@ const getAllPriests = async () => {
     })
     .lean()
     .exec();
-};
-
-const searchPriests = async (query) => {
-  const { ceremony, city, religion, minRating, search, page = 1, limit = 10 } = query;
-  const filter = { 'currentAvailability.status': 'available' };
-
-  if (ceremony) {
-    const ceremonyDoc = await Ceremony.findOne({
-      name: new RegExp(ceremony, 'i'),
-      isActive: true,
-    })
-      .select('_id')
-      .lean();
-    if (ceremonyDoc) filter['services.ceremonyId'] = ceremonyDoc._id;
-    else return { priests: [], total: 0 };
-  }
-
-  if (city) {
-    const cityRegex = new RegExp(city, 'i');
-    const cityUsers = await User.find({ 'location.city': cityRegex }).select('_id').lean();
-    filter.userId = { $in: cityUsers.map((u) => u._id) };
-  }
-
-  if (religion) filter.religiousTradition = new RegExp(religion, 'i');
-  if (minRating) filter['ratings.average'] = { $gte: parseFloat(minRating) };
-
-  if (search) {
-    const searchRegex = new RegExp(search, 'i');
-    const matchingUsers = await User.find({ name: searchRegex }).select('_id').lean();
-    filter.$or = [
-      { userId: { $in: matchingUsers.map((u) => u._id) } },
-      { description: searchRegex },
-    ];
-  }
-
-  const priests = await PriestProfile.find(filter)
-    .select(
-      'userId services ratings currentAvailability location experience religiousTradition profilePicture isVerified verificationStatus'
-    )
-    .populate({
-      path: 'userId',
-      select: 'name profilePicture languagesSpoken',
-    })
-    .populate('services.ceremonyId', 'name category duration')
-    .sort({ 'ratings.average': -1 })
-    .limit(limit * 1)
-    .skip((page - 1) * limit)
-    .lean()
-    .exec();
-
-  const total = await PriestProfile.countDocuments(filter);
-  return { priests, total };
 };
 
 const getPriestDetails = async (priestId) => {
@@ -163,7 +111,6 @@ const manageAddress = async (userId, action, addressData, addressId = null) => {
 
 module.exports = {
   getAllPriests,
-  searchPriests,
   getPriestDetails,
   updateProfile,
   manageAddress,

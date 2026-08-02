@@ -12,4 +12,5 @@ module.exports = {
   },
   transformIgnorePatterns: ['node_modules/(?!(expo-server-sdk|axios)/)'],
   coveragePathIgnorePatterns: ['/node_modules/'],
+  testPathIgnorePatterns: ['/node_modules/', '/.claude/worktrees/'],
 };

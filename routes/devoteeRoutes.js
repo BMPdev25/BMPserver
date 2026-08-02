@@ -1,7 +1,6 @@
 // routes/devoteeRoutes.js
 const express = require('express');
 const devoteeController = require('../controllers/devoteeController');
-const reviewController = require('../controllers/reviewController');
 const { protect, devoteeOnly } = require('../middleware/authMiddleware');
 const validate = require('../middleware/validate');
 const { addAddressRules } = require('../validators/profileValidators');
@@ -12,7 +11,6 @@ const router = express.Router();
 router.get('/priests/all', devoteeController.getAllPriests);
 router.get('/priests', devoteeController.searchPriests);
 router.get('/priests/:priestId', devoteeController.getPriestDetails);
-router.get('/priests/:priestId/reviews', reviewController.getUserReviews);
 
 // Protected routes (need authentication and devotee role)
 router.get('/pending-actions', protect, devoteeOnly, devoteeController.getPendingActions);
@@ -22,6 +20,12 @@ router.put('/profile', protect, devoteeOnly, devoteeController.updateProfile);
 
 // Notification routes
 router.get('/notifications', protect, devoteeOnly, devoteeController.getNotifications);
+router.get(
+  '/notifications/unread-count',
+  protect,
+  devoteeOnly,
+  devoteeController.getUnreadNotificationCount
+);
 router.put(
   '/notifications/:notificationId/read',
   protect,

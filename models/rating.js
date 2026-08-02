@@ -66,6 +66,10 @@ const ratingSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    isTestRecord: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -75,6 +79,5 @@ const ratingSchema = new mongoose.Schema(
 // Prevent duplicate ratings for the same booking
 ratingSchema.index({ bookingId: 1, userId: 1 }, { unique: true });
 ratingSchema.index({ priestId: 1, createdAt: -1 });
-ratingSchema.index({ bookingId: 1 });
 
 module.exports = mongoose.model('Rating', ratingSchema);

@@ -48,6 +48,7 @@ const priestProfileSchema = new mongoose.Schema({
 
   experience: Number,
   religiousTradition: String,
+  religiousTraditions: [String],
   description: String,
   // ceremonies: [String], // Removed legacy field. Use services instead.
 
@@ -160,7 +161,7 @@ const priestProfileSchema = new mongoose.Schema({
     type: Number,
     default: 1,
     min: 1,
-    max: 6,
+    max: 7,
   },
   onboardingCompleted: {
     type: Boolean,
@@ -178,17 +179,7 @@ const priestProfileSchema = new mongoose.Schema({
   // Earnings
   earnings: {
     totalEarnings: { type: Number, default: 0 },
-    thisMonth: { type: Number, default: 0 },
-    lastMonth: { type: Number, default: 0 },
     pendingPayments: { type: Number, default: 0 },
-    monthlyEarnings: [
-      {
-        month: Number,
-        year: Number,
-        amount: Number,
-        completedCeremonies: Number,
-      },
-    ],
     lastPayoutDate: Date,
     nextPayoutDate: Date,
   },
@@ -198,15 +189,6 @@ const priestProfileSchema = new mongoose.Schema({
     completionRate: { type: Number, default: 100 },
     responseTime: { type: Number, default: 2 },
     repeatCustomers: { type: Number, default: 0 },
-    monthlyTrends: [
-      {
-        month: Number,
-        year: Number,
-        bookings: Number,
-        earnings: Number,
-        averageRating: Number,
-      },
-    ],
   },
 
   verificationDocuments: [
@@ -255,13 +237,35 @@ priestProfileSchema.pre('save', function (next) {
   next();
 });
 
+// The pre-save hook above only runs on document.save() — findOneAndUpdate/
+// updateOne/updateMany skip document middleware entirely, so a write that
+// sets verificationStatus through one of those (a script, a future admin
+// bulk-action, etc.) would silently leave isVerified stale. Mirror the
+// verificationStatus -> isVerified half of the sync for query-level updates.
+// This does NOT cover raw MongoDB driver writes or manual edits (Atlas/
+// Compass) — those bypass Mongoose entirely. That residual gap is why
+// callers should filter/gate on verificationStatus (the canonical field)
+// rather than isVerified wherever possible.
+function syncIsVerifiedOnQueryUpdate(next) {
+  const update = this.getUpdate();
+  if (!update) return next();
+  for (const target of [update, update.$set]) {
+    if (target && Object.prototype.hasOwnProperty.call(target, 'verificationStatus')) {
+      target.isVerified = target.verificationStatus === 'approved';
+    }
+  }
+  next();
+}
+priestProfileSchema.pre('findOneAndUpdate', syncIsVerifiedOnQueryUpdate);
+priestProfileSchema.pre('updateOne', syncIsVerifiedOnQueryUpdate);
+priestProfileSchema.pre('updateMany', syncIsVerifiedOnQueryUpdate);
+
 // Very important: For radius search
 priestProfileSchema.index({ location: '2dsphere' });
 
 priestProfileSchema.index({ verificationStatus: 1, isVerified: 1 });
 priestProfileSchema.index({ 'currentAvailability.status': 1 });
 priestProfileSchema.index({ 'ratings.average': -1 });
-priestProfileSchema.index({ isVerified: 1 });
 // Compound index for the common "available verified priests by rating" query
 priestProfileSchema.index({
   isVerified: 1,

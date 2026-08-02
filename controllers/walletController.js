@@ -1,5 +1,7 @@
 // controllers/walletController.js
 const Transaction = require('../models/transaction');
+const Wallet = require('../models/wallet');
+const PriestProfile = require('../models/priestProfile');
 const { initiateBankTransfer } = require('../config/razorpay');
 const { getOrCreateWallet } = require('../services/commissionEngine');
 
@@ -61,24 +63,23 @@ exports.requestWithdrawal = async (req, res) => {
         .json({ message: 'Your wallet is currently frozen. Please contact support.' });
     }
 
-    // Check sufficient balance
-    if (amount > wallet.currentBalance) {
+    // Atomically deduct — prevents double-withdrawal race condition
+    const updated = await Wallet.findOneAndUpdate(
+      { priestId, currentBalance: { $gte: amount } },
+      { $inc: { currentBalance: -amount, totalDebited: amount }, $set: { lastPayoutDate: new Date() } },
+      { new: true }
+    );
+    if (!updated) {
       return res.status(400).json({
-        message: 'Insufficient balance for withdrawal',
-        currentBalance: wallet.currentBalance,
+        success: false,
+        message: 'Insufficient balance',
       });
     }
-
-    // Deduct from wallet immediately (optimistic)
-    wallet.currentBalance -= amount;
-    wallet.totalDebited += amount;
-    wallet.lastPayoutDate = new Date();
-    await wallet.save();
 
     // Create a pending transaction
     const transaction = await Transaction.create({
       priestId,
-      walletId: wallet._id,
+      walletId: updated._id,
       type: 'payout_withdrawal',
       direction: 'outflow',
       amount,
@@ -98,11 +99,15 @@ exports.requestWithdrawal = async (req, res) => {
       transaction.status = payoutResult.success ? 'completed' : 'failed';
       await transaction.save();
 
-      // If payout failed, refund the wallet
-      if (!payoutResult.success) {
-        wallet.currentBalance += amount;
-        wallet.totalDebited -= amount;
-        await wallet.save();
+      if (payoutResult.success) {
+        await PriestProfile.findOneAndUpdate(
+          { userId: priestId },
+          { $inc: { 'earnings.pendingPayments': -amount } }
+        );
+      } else {
+        await Wallet.findByIdAndUpdate(updated._id, {
+          $inc: { currentBalance: amount, totalDebited: -amount },
+        });
       }
 
       res.status(200).json({
@@ -111,13 +116,13 @@ exports.requestWithdrawal = async (req, res) => {
         referenceId: payoutResult.referenceId,
         amount,
         status: transaction.status,
-        newBalance: wallet.currentBalance,
+        newBalance: payoutResult.success ? updated.currentBalance : updated.currentBalance + amount,
       });
     } catch (payoutError) {
-      // Payout gateway failed — refund wallet
-      wallet.currentBalance += amount;
-      wallet.totalDebited -= amount;
-      await wallet.save();
+      // Payout gateway failed — restore wallet balance atomically
+      await Wallet.findByIdAndUpdate(updated._id, {
+        $inc: { currentBalance: amount, totalDebited: -amount },
+      });
 
       transaction.status = 'failed';
       await transaction.save();

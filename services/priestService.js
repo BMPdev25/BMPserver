@@ -1,6 +1,5 @@
 // services/priestService.js
 const PriestProfile = require('../models/priestProfile');
-const User = require('../models/user');
 const Booking = require('../models/booking');
 const Transaction = require('../models/transaction');
 const Notification = require('../models/notification');
@@ -8,20 +7,41 @@ const { getOrCreateWallet } = require('../services/commissionEngine');
 const { uploadPublicFile, uploadPrivateFile, deletePrivateFile } = require('./storageService');
 const { priestProfilePicKey, priestDocumentKey } = require('../utils/s3Keys');
 
+// Only these fields may be set through the priest's own profile-edit path.
+// NEVER allow via this path: isVerified, verificationStatus, ratings, earnings,
+// onboardingCompleted, userId — those are controlled server-side / by admins.
+// Without this whitelist a priest could self-approve (isVerified: true) or
+// inflate their own ratings/earnings by mass-assigning raw request body fields.
+const PRIEST_PROFILE_EDITABLE_FIELDS = [
+  'description',
+  'experience',
+  'religiousTraditions',
+  'languagesSpoken',
+  'services',
+  'availability',
+  'location',
+  'templesAffiliated',
+  'profilePicture',
+];
+
 const updateProfile = async (userId, updateData) => {
+  const safeUpdate = {};
+  for (const key of PRIEST_PROFILE_EDITABLE_FIELDS) {
+    if (updateData[key] !== undefined) safeUpdate[key] = updateData[key];
+  }
+
   let profile = await PriestProfile.findOne({ userId });
 
   if (profile) {
-    profile = await PriestProfile.findOneAndUpdate({ userId }, updateData, {
+    profile = await PriestProfile.findOneAndUpdate({ userId }, safeUpdate, {
       new: true,
     });
   } else {
     profile = new PriestProfile({
       userId,
-      ...updateData,
+      ...safeUpdate,
     });
     await profile.save();
-    await User.findByIdAndUpdate(userId, { profileCompleted: true });
   }
 
   return profile;
@@ -30,10 +50,11 @@ const updateProfile = async (userId, updateData) => {
 const getProfile = async (userId) => {
   let profile = await PriestProfile.findOne({ userId })
     .populate('userId')
-    .populate('services.ceremonyId', 'name duration images description requirements');
+    .populate('services.ceremonyId', 'name duration images description requirements')
+    .lean();
 
   if (!profile) {
-    profile = new PriestProfile({
+    const newProfile = new PriestProfile({
       userId,
       experience: 0,
       services: [],
@@ -41,10 +62,11 @@ const getProfile = async (userId) => {
       verificationDocuments: [],
       templesAffiliated: [],
     });
-    await profile.save();
+    await newProfile.save();
     profile = await PriestProfile.findOne({ userId })
       .populate('userId')
-      .populate('services.ceremonyId', 'name duration images description requirements');
+      .populate('services.ceremonyId', 'name duration images description requirements')
+      .lean();
   }
 
   return profile;
@@ -176,6 +198,52 @@ const getEarnings = async (userId) => {
     totalBookings: pujasCompleted,
     pujasCompleted,
     walletStatus: wallet.status,
+  };
+};
+
+// Paginated transaction history. Distinct from getEarnings (which returns a
+// fixed 10-item preview alongside the wallet summary) — this powers the
+// "load more" transactions list and returns pagination metadata.
+const getTransactions = async (userId, { page = 1, limit = 20 } = {}) => {
+  const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+  const limitNum = Math.max(parseInt(limit, 10) || 20, 1);
+  const skip = (pageNum - 1) * limitNum;
+
+  const [transactions, total] = await Promise.all([
+    Transaction.find({ priestId: userId })
+      .select('amount type direction status description bookingId createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum)
+      .populate({
+        path: 'bookingId',
+        select: 'ceremonyType date devoteeId',
+        populate: {
+          path: 'devoteeId',
+          select: 'name profilePicture',
+        },
+      })
+      .lean(),
+    Transaction.countDocuments({ priestId: userId }),
+  ]);
+
+  return {
+    data: transactions.map((tx) => ({
+      id: tx._id,
+      amount: tx.amount,
+      type: tx.type,
+      direction: tx.direction,
+      date: tx.createdAt,
+      description: tx.description,
+      status: tx.status,
+      booking: tx.bookingId,
+    })),
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      hasMore: skip + transactions.length < total,
+    },
   };
 };
 
@@ -312,6 +380,7 @@ module.exports = {
   toggleStatus,
   getBookings,
   getEarnings,
+  getTransactions,
   getNotifications,
   markNotificationAsRead,
   uploadDocument,

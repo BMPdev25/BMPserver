@@ -88,25 +88,6 @@ exports.createInstantBooking = async (req, res, next) => {
   }
 };
 
-// Update booking status
-exports.updateBookingStatus = async (req, res, next) => {
-  try {
-    const { bookingId } = req.params;
-    const { status, reason } = req.body;
-    const userId = req.user.id;
-
-    const booking = await bookingService.updateBookingStatus(bookingId, userId, { status, reason });
-
-    res.status(200).json({
-      success: true,
-      message: `Booking ${status} successfully`,
-      booking: booking,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 // Cancel booking by devotee
 exports.cancelBookingByDevotee = async (req, res, next) => {
   try {
@@ -156,12 +137,13 @@ exports.createPaymentOrder = async (req, res, next) => {
 exports.verifyPayment = async (req, res, next) => {
   try {
     const { bookingId, rzpPaymentId, rzpOrderId, rzpSignature } = req.body;
+    const userId = req.user.id;
 
     const booking = await bookingService.verifyPayment(bookingId, {
       rzpPaymentId,
       rzpOrderId,
       rzpSignature,
-    });
+    }, userId);
 
     res.status(200).json({
       success: true,

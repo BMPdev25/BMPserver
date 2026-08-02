@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../models/user');
 const Booking = require('../models/booking');
-const Review = require('../models/review');
+const Rating = require('../models/rating');
 
 // Security middleware to ensure these routes NEVER run in production
 // and require a secret key in non-production environments.
@@ -27,14 +27,14 @@ router.post('/teardown', async (req, res) => {
   try {
     const userResult = await User.deleteMany({ isTestRecord: true });
     const bookingResult = await Booking.deleteMany({ isTestRecord: true });
-    const reviewResult = await Review.deleteMany({ isTestRecord: true });
+    const ratingResult = await Rating.deleteMany({ isTestRecord: true });
 
     res.json({
       success: true,
       deletedCount: {
         users: userResult.deletedCount,
         bookings: bookingResult.deletedCount,
-        reviews: reviewResult.deletedCount,
+        ratings: ratingResult.deletedCount,
       },
     });
   } catch (error) {
@@ -49,7 +49,7 @@ router.post('/seed/booking', async (req, res) => {
     // First, force a teardown of old test data to ensure a clean slate
     await User.deleteMany({ isTestRecord: true });
     await Booking.deleteMany({ isTestRecord: true });
-    await Review.deleteMany({ isTestRecord: true });
+    await Rating.deleteMany({ isTestRecord: true });
 
     const { bookingStatus = 'pending', paymentStatus = 'pending' } = req.body;
 

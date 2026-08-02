@@ -13,7 +13,64 @@ const Wallet = require('../models/wallet');
 const CompanyRevenue = require('../models/companyRevenue');
 const Booking = require('../models/booking');
 const User = require('../models/user');
-const { processBookingCompletion } = require('../services/commissionEngine');
+const { getOrCreateWallet, COMMISSION_RATE } = require('../services/commissionEngine');
+
+// Local settlement helper for this dev seed. The production credit path is the
+// inline transactional block in bookingService.updateBookingStatus, which can
+// only be reached by transitioning a booking INTO 'completed'. This seed instead
+// back-fills wallets from bookings that are ALREADY 'completed', so it replicates
+// the minimal credit here (non-transactional — acceptable for a local seed).
+async function creditCompletedBooking(bookingId) {
+  const booking = await Booking.findById(bookingId);
+  if (!booking) throw new Error(`Booking not found: ${bookingId}`);
+  if (booking.status !== 'completed') {
+    throw new Error(`Booking ${bookingId} is not in 'completed' status (current: ${booking.status})`);
+  }
+
+  const existingTx = await Transaction.findOne({
+    bookingId,
+    type: 'credit_for_booking',
+    status: 'completed',
+  });
+  if (existingTx) throw new Error(`Booking ${bookingId} has already been processed for payment`);
+
+  const priestShare = booking.basePrice;
+  const commission =
+    booking.platformFee || Math.round(booking.basePrice * COMMISSION_RATE * 100) / 100;
+  const totalAmount = booking.totalAmount || priestShare + commission;
+
+  const wallet = await getOrCreateWallet(booking.priestId);
+  if (wallet.status === 'frozen') throw new Error(`Wallet for priest ${booking.priestId} is frozen`);
+
+  wallet.currentBalance += priestShare;
+  wallet.totalCredited += priestShare;
+  await wallet.save();
+
+  const transaction = await Transaction.create({
+    priestId: booking.priestId,
+    walletId: wallet._id,
+    bookingId: booking._id,
+    type: 'credit_for_booking',
+    direction: 'inflow',
+    amount: priestShare,
+    status: 'completed',
+    description: `${booking.ceremonyType} ceremony`,
+  });
+
+  await CompanyRevenue.create({
+    bookingId: booking._id,
+    priestId: booking.priestId,
+    totalAmount,
+    commissionAmount: commission,
+    commissionRate: COMMISSION_RATE,
+    priestShare,
+  });
+
+  booking.paymentStatus = 'completed';
+  await booking.save();
+
+  return { wallet, transaction };
+}
 
 async function seed() {
   try {
@@ -58,7 +115,7 @@ async function seed() {
     let errorCount = 0;
     for (const booking of completedBookings) {
       try {
-        const result = await processBookingCompletion(booking._id);
+        const result = await creditCompletedBooking(booking._id);
         console.log(
           `  ✓ Booking ${booking._id}: ₹${result.transaction.amount} → Priest ${booking.priestId}`
         );
