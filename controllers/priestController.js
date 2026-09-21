@@ -431,13 +431,20 @@ exports.submitVerification = async (req, res, next) => {
       });
     }
 
-    const hasGovernmentId = (profile.verificationDocuments || []).some(
-      (d) => d.type === 'government_id' && d.url
+    // profile_picture lives on profile.profilePicture (public bucket, no
+    // presigning needed), not in verificationDocuments — that array's schema
+    // only allows government_id/religious_certificate/other.
+    const REQUIRED_DOCUMENT_TYPES = ['government_id', 'religious_certificate'];
+    const uploadedTypes = new Set(
+      (profile.verificationDocuments || []).filter((d) => d.url).map((d) => d.type)
     );
-    if (!hasGovernmentId) {
+    const missingTypes = REQUIRED_DOCUMENT_TYPES.filter((t) => !uploadedTypes.has(t));
+    if (!profile.profilePicture) missingTypes.unshift('profile_picture');
+    if (missingTypes.length > 0) {
       return res.status(400).json({
         success: false,
-        message: 'You must upload a government ID document before submitting for verification.',
+        message: `You must upload the following before submitting for verification: ${missingTypes.join(', ')}.`,
+        missingDocuments: missingTypes,
       });
     }
 

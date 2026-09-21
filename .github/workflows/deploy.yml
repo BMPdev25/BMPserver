@@ -1,0 +1,115 @@
+# CD: run the backend test suite, then deploy to the EC2 host over SSH by
+# rebuilding the Docker image on the server and restarting the container.
+#
+# This does NOT use a registry (ECR/Docker Hub) — it git-pulls on the EC2
+# box itself and runs `docker build` there, per the Dockerfile already in
+# this repo. Simple, no extra moving parts, fine for a single-instance
+# deployment. If you outgrow one EC2 box, switch to building the image here
+# in CI and pushing it to ECR instead.
+#
+# --- Required GitHub secrets (Settings -> Secrets and variables -> Actions) ---
+#   EC2_HOST         Public IP or DNS name of the EC2 instance
+#   EC2_USERNAME      SSH user (e.g. ubuntu, ec2-user)
+#   EC2_SSH_KEY       Private key (PEM contents) matching a key authorized on the instance
+#   EC2_DEPLOY_PATH   Absolute path to the git checkout on the instance (e.g. /home/ubuntu/BMPserver)
+#
+# --- Optional secrets ---
+#   EC2_PORT          SSH port, defaults to 22 if not set
+#   APP_PORT          Host port the container's 5000 is published on, defaults to 5000
+#
+# --- Assumptions about the EC2 host (set these up once, manually) ---
+#   - Docker is already installed and the SSH user can run `docker` (in the
+#     `docker` group, or the workflow needs `sudo` added to the script below).
+#   - The repo is already cloned at EC2_DEPLOY_PATH with `origin` reachable
+#     (e.g. via a deploy key) so `git fetch`/`git reset --hard` works headlessly.
+#   - A real `.env` file (not committed) already sits at EC2_DEPLOY_PATH/.env
+#     with production values — this workflow never sends secrets to the
+#     container, it just tells Docker to read that existing file.
+
+name: Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: backend-deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Run backend test suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Deploy to EC2
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            cd "${{ secrets.EC2_DEPLOY_PATH }}"
+
+            echo "Pulling latest main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "Building image..."
+            docker build -t bookmypujari-backend:latest .
+
+            echo "Restarting container..."
+            docker stop bookmypujari-backend 2>/dev/null || true
+            docker rm bookmypujari-backend 2>/dev/null || true
+            docker run -d \
+              --name bookmypujari-backend \
+              --restart unless-stopped \
+              --env-file .env \
+              -p "${{ secrets.APP_PORT || 5000 }}:5000" \
+              bookmypujari-backend:latest
+
+            echo "Waiting for health check..."
+            for i in $(seq 1 10); do
+              if curl -fs "http://localhost:${{ secrets.APP_PORT || 5000 }}/api/health" > /dev/null; then
+                echo "Healthy."
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "Container failed to become healthy — recent logs:"
+            docker logs bookmypujari-backend --tail 80
+            exit 1
+
+      - name: Clean up dangling images
+        if: success()
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: ${{ secrets.EC2_PORT || 22 }}
+          script: docker image prune -f
