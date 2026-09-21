@@ -1,5 +1,8 @@
 // services/commissionEngine.js
 const Wallet = require('../models/wallet');
+const Booking = require('../models/booking');
+const Transaction = require('../models/transaction');
+const CompanyRevenue = require('../models/companyRevenue');
 
 // Platform commission rate (5%)
 const COMMISSION_RATE = 0.05;
@@ -136,5 +139,6 @@ async function getOrCreateWallet(priestId) {
 
 module.exports = {
   getOrCreateWallet,
+  processBookingCompletion,
   COMMISSION_RATE,
 };

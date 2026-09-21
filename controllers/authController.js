@@ -122,6 +122,11 @@ exports.firebaseSync = async (req, res) => {
         const DevoteeProfile = require('../models/devoteeProfile');
         await DevoteeProfile.create({ userId: user._id, isVerified: true });
       }
+
+      // First-time registration — send the welcome email (no-op if the user
+      // has no email, e.g. phone-only signup). Never blocks/fails the response.
+      const mailService = require('../services/mailService');
+      await mailService.sendWelcomeEmail(user).catch(() => {});
     } else {
       // Update any basic login info on subsequent logins (like pushTokens)
       let isModified = false;
@@ -378,6 +383,11 @@ exports.verifyOtp = async (req, res) => {
           languagesSpoken: Array.isArray(languagesSpoken) ? languagesSpoken : [],
         });
       }
+
+      // First-time registration via OTP — send the welcome email (no-op if
+      // the user has no email on file, which is the common case for OTP signup).
+      const mailService = require('../services/mailService');
+      await mailService.sendWelcomeEmail(user).catch(() => {});
     }
 
     // Persist firebaseUid BEFORE minting the token so the user is never orphaned if

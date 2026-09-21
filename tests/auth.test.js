@@ -7,6 +7,9 @@ jest.mock('../config/firebase', () => ({
       if (token === 'valid-firebase-token') {
         return { uid: 'test-uid-auth', email: 'authtest@test.com', phone_number: '+919001234567' }
       }
+      if (token === 'valid-firebase-token-priest') {
+        return { uid: 'test-uid-priest', email: 'priesttest@test.com', phone_number: '+919001234568' }
+      }
       const err = new Error('Firebase: token invalid')
       err.code = 'auth/argument-error'
       throw err
@@ -26,6 +29,7 @@ jest.mock('expo-server-sdk', () => ({
 const request = require('supertest')
 const { app } = require('../server')
 const { createTestDevotee } = require('./helpers/testFactory')
+const nodemailerMock = require('nodemailer')
 
 describe('POST /api/auth/sync (Firebase login / registration)', () => {
   it('creates a new user on first sync and returns user data', async () => {
@@ -109,5 +113,54 @@ describe('GET /api/users/profile', () => {
     const res = await request(app).get('/api/users/profile')
 
     expect(res.status).toBe(401)
+  })
+})
+
+describe('Welcome email on registration', () => {
+  beforeEach(() => {
+    nodemailerMock.__sendMail.mockClear()
+  })
+
+  it('sends a welcome email to a devotee on first registration', async () => {
+    const res = await request(app)
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer valid-firebase-token')
+      .send({ userType: 'devotee', name: 'Asha Devotee' })
+
+    expect(res.status).toBe(200)
+    expect(nodemailerMock.__sendMail).toHaveBeenCalledTimes(1)
+    const call = nodemailerMock.__sendMail.mock.calls[0][0]
+    expect(call.to).toBe('authtest@test.com')
+    expect(call.subject).toMatch(/Welcome to BookMyPujari/)
+  })
+
+  it('sends a welcome email to a priest on first registration', async () => {
+    const res = await request(app)
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer valid-firebase-token-priest')
+      .send({ userType: 'priest', name: 'Sharma Ji' })
+
+    expect(res.status).toBe(200)
+    expect(nodemailerMock.__sendMail).toHaveBeenCalledTimes(1)
+    const call = nodemailerMock.__sendMail.mock.calls[0][0]
+    expect(call.to).toBe('priesttest@test.com')
+    expect(call.html).toContain('Pandit')
+  })
+
+  it('does not resend the welcome email on a subsequent login', async () => {
+    await request(app)
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer valid-firebase-token')
+      .send({ userType: 'devotee', name: 'Asha Devotee' })
+
+    nodemailerMock.__sendMail.mockClear()
+
+    const loginRes = await request(app)
+      .post('/api/auth/sync')
+      .set('Authorization', 'Bearer valid-firebase-token')
+      .send({})
+
+    expect(loginRes.status).toBe(200)
+    expect(nodemailerMock.__sendMail).not.toHaveBeenCalled()
   })
 })

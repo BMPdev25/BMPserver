@@ -7,6 +7,12 @@ module.exports = {
   // after the run completes. DB/mongo teardown still runs in setup.js afterAll.
   forceExit: true,
   setupFilesAfterEnv: ['./tests/setup.js'],
+  // Global — every test run uses the mock transport, so any registration
+  // flow that triggers a welcome email never attempts a real SMTP connection
+  // (which would hang/timeout against the fake EMAIL_HOST in .env.test).
+  moduleNameMapper: {
+    '^nodemailer$': '<rootDir>/tests/mocks/mailer.js',
+  },
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },

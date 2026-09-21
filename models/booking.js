@@ -112,6 +112,15 @@ const bookingSchema = new mongoose.Schema({
     enum: ['pending', 'completed', 'refunding', 'refunded'],
     default: 'pending',
   },
+  itemsDeliveryRequested: {
+    type: Boolean,
+    default: false,
+  },
+  itemsDeliveryStatus: {
+    type: String,
+    enum: ['pending', 'preparing', 'dispatched', 'delivered', 'not_applicable'],
+    default: 'not_applicable',
+  },
   createdAt: {
     type: Date,
     default: Date.now,

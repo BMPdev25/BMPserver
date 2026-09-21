@@ -800,20 +800,30 @@ const updateBookingStatus = async (bookingId, userId, { status, reason }) => {
     const session = await mongoose.startSession();
     try {
       await session.withTransaction(async () => {
-        // 1. Update booking status within transaction
-        booking.status = status;
-        booking.completionDate = new Date();
-        booking.statusHistory.push({
+        // withTransaction may re-run this callback on a transient commit
+        // error. Re-fetch the booking fresh on every attempt instead of
+        // reusing the outer, already-mutated `booking` object — reusing it
+        // leaves mongoose thinking fields are unchanged on a retry, so the
+        // status write silently no-ops and the very next read-back inside
+        // the same (retried) transaction sees stale pre-completion data.
+        const txBooking = await Booking.findById(booking._id).session(session);
+        txBooking.status = status;
+        txBooking.completionDate = new Date();
+        txBooking.statusHistory.push({
           status,
           timestamp: new Date(),
           updatedBy: userId,
           reason: reason || `Status changed to ${status}`,
         });
-        await booking.save({ session });
+        await txBooking.save({ session });
 
         // 2. Invoke the commission engine (which handles Wallet, Transaction, CompanyRevenue, PriestProfile, and paymentStatus updates)
         const { processBookingCompletion } = require('./commissionEngine');
-        await processBookingCompletion(booking._id, { session });
+        await processBookingCompletion(txBooking._id, { session });
+
+        booking.status = txBooking.status;
+        booking.completionDate = txBooking.completionDate;
+        booking.statusHistory = txBooking.statusHistory;
       });
 
       // Send push notification outside the transaction session to prevent locking delays

@@ -7,6 +7,7 @@ const Booking = require('../models/booking');
 const Notification = require('../models/notification');
 const PriestProfile = require('../models/priestProfile');
 const Ceremony = require('../models/ceremony');
+const Rating = require('../models/rating');
 
 // Get all priests (for debugging)
 exports.getAllPriests = async (req, res, next) => {

@@ -83,7 +83,7 @@ exports.requestWithdrawal = async (req, res) => {
     // Create a pending transaction
     const transaction = await Transaction.create({
       priestId,
-      walletId: updated._id,
+      walletId: wallet._id,
       type: 'payout_withdrawal',
       direction: 'outflow',
       amount,
@@ -120,7 +120,7 @@ exports.requestWithdrawal = async (req, res) => {
         referenceId: payoutResult.referenceId,
         amount,
         status: transaction.status,
-        newBalance: payoutResult.success ? updated.currentBalance : updated.currentBalance + amount,
+        newBalance: payoutResult.success ? wallet.currentBalance : wallet.currentBalance + amount,
       });
     } catch (payoutError) {
       // Payout gateway failed — refund wallet
