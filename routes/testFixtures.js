@@ -160,6 +160,7 @@ router.post('/verify-priest', async (req, res) => {
       {
         verificationStatus: 'approved',
         isVerified: true,
+        onboardingCompleted: true,
         'currentAvailability.status': 'available',
       },
       { new: true }
